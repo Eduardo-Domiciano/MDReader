@@ -1,0 +1,277 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from PySide6.QtCore import QTimer, Qt, QUrl
+from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut
+from PySide6.QtWidgets import (
+    QApplication,
+    QFileDialog,
+    QHBoxLayout,
+    QMainWindow,
+    QMessageBox,
+    QSplitter,
+    QVBoxLayout,
+    QWidget,
+)
+
+from app.chrome import FormatToolbar, InsertRail, StatusBar
+from app.editor import MarkdownEditor
+from app.preview import create_preview, render_preview
+from app.theme import apply_theme, configure_app
+
+WELCOME_MARKDOWN = """# MDReader
+
+Escreva Markdown à esquerda e veja o resultado à direita.
+
+## Atalhos
+
+- **Ctrl+N** — novo arquivo
+- **Ctrl+O** — abrir
+- **Ctrl+S** — salvar
+- **Ctrl+B** — negrito
+- **Ctrl+I** — itálico
+
+```python
+print("olá, markdown")
+```
+"""
+
+PREVIEW_DEBOUNCE_MS = 200
+
+
+class MainWindow(QMainWindow):
+    def __init__(self) -> None:
+        super().__init__()
+        self.resize(1100, 700)
+        self._path: Path | None = None
+        self._dirty = False
+        self._theme = "dark"
+        self._updating = False
+
+        self.editor = MarkdownEditor()
+        self.preview = create_preview()
+        self.status = StatusBar()
+
+        toolbar = FormatToolbar(self.editor)
+        toolbar.preview_toggled.connect(self.set_preview_visible)
+        rail = InsertRail(self.editor)
+
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter.addWidget(self.editor)
+        self.splitter.addWidget(self.preview.widget())
+        self.splitter.setSizes([550, 550])
+        self.splitter.setStretchFactor(0, 1)
+        self.splitter.setStretchFactor(1, 1)
+        self.splitter.setChildrenCollapsible(False)
+        self._preview_sizes = [550, 550]
+
+        main_row = QWidget()
+        main_row.setObjectName("workspace")
+        row_layout = QHBoxLayout(main_row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(0)
+        row_layout.addWidget(rail)
+        row_layout.addWidget(self.splitter, 1)
+
+        root = QWidget()
+        root.setObjectName("workspace")
+        root_layout = QVBoxLayout(root)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+        root_layout.addWidget(toolbar)
+        root_layout.addWidget(main_row, 1)
+        root_layout.addWidget(self.status)
+        self.setCentralWidget(root)
+
+        self._preview_timer = QTimer(self)
+        self._preview_timer.setSingleShot(True)
+        self._preview_timer.setInterval(PREVIEW_DEBOUNCE_MS)
+        self._preview_timer.timeout.connect(self._refresh_preview)
+
+        self.editor.textChanged.connect(self._on_text_changed)
+        self.editor.cursorPositionChanged.connect(self._update_status)
+        self.preview.code_copied.connect(lambda: self.status.flash("Copiado"))
+        QShortcut(QKeySequence.StandardKey.Bold, self, self._bold)
+        QShortcut(QKeySequence.StandardKey.Italic, self, self._italic)
+
+        self._build_menus()
+        apply_theme(self, self._theme)
+        self._set_editor_text(WELCOME_MARKDOWN, dirty=False)
+        self._refresh_preview()
+        self._update_title()
+        self._update_status()
+
+    def set_preview_visible(self, visible: bool) -> None:
+        pane = self.preview.widget()
+        if visible:
+            pane.show()
+            self.splitter.setSizes(self._preview_sizes or [550, 550])
+            self._refresh_preview()
+        else:
+            self._preview_sizes = self.splitter.sizes()
+            pane.hide()
+
+    def _bold(self) -> None:
+        self.editor.wrap_markup("**", placeholder="negrito")
+
+    def _italic(self) -> None:
+        self.editor.wrap_markup("*", placeholder="itálico")
+
+    def _build_menus(self) -> None:
+        arquivo = self.menuBar().addMenu("&Arquivo")
+        arquivo.addAction(self._action("&Novo", self.new_file, QKeySequence.StandardKey.New))
+        arquivo.addAction(self._action("&Abrir…", self.open_file, QKeySequence.StandardKey.Open))
+        arquivo.addAction(self._action("&Salvar", self.save_file, QKeySequence.StandardKey.Save))
+        arquivo.addAction(
+            self._action("Salvar &como…", self.save_file_as, QKeySequence.StandardKey.SaveAs)
+        )
+        arquivo.addSeparator()
+        arquivo.addAction(self._action("&Sair", self.close, QKeySequence.StandardKey.Quit))
+
+        visualizar = self.menuBar().addMenu("&Visualizar")
+        visualizar.addAction(self._action("Tema &escuro", lambda: self.set_theme("dark")))
+        visualizar.addAction(self._action("Tema &claro", lambda: self.set_theme("light")))
+
+    def _action(self, text: str, slot, shortcut=None) -> QAction:
+        action = QAction(text, self)
+        if shortcut is not None:
+            action.setShortcut(shortcut)
+        action.triggered.connect(slot)
+        return action
+
+    def _on_text_changed(self) -> None:
+        if self._updating:
+            return
+        if not self._dirty:
+            self._dirty = True
+            self._update_title()
+        self._preview_timer.start()
+        self._update_status()
+
+    def _update_status(self) -> None:
+        line, col = self.editor.cursor_line_col()
+        self.status.set_cursor(line, col)
+
+    def _refresh_preview(self) -> None:
+        html = render_preview(self.editor.toPlainText(), self._theme)
+        base = None
+        if self._path is not None:
+            base = QUrl.fromLocalFile(str(self._path.parent) + "/")
+        self.preview.set_html(html, base)
+
+    def set_theme(self, theme: str) -> None:
+        self._theme = theme
+        apply_theme(self, theme)
+        self._refresh_preview()
+
+    def _set_editor_text(self, text: str, *, dirty: bool) -> None:
+        self._updating = True
+        self.editor.setPlainText(text)
+        self._updating = False
+        self._dirty = dirty
+        self._update_title()
+        self._update_status()
+
+    def _update_title(self) -> None:
+        name = self._path.name if self._path else "Sem título"
+        mark = "*" if self._dirty else ""
+        self.setWindowTitle(f"{mark}{name} — MDReader")
+
+    def _confirm_discard(self) -> bool:
+        if not self._dirty:
+            return True
+        answer = QMessageBox.question(
+            self,
+            "Alterações não salvas",
+            "Deseja salvar as alterações?",
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Save,
+        )
+        if answer == QMessageBox.StandardButton.Cancel:
+            return False
+        if answer == QMessageBox.StandardButton.Save:
+            return self.save_file()
+        return True
+
+    def new_file(self) -> None:
+        if not self._confirm_discard():
+            return
+        self._path = None
+        self._set_editor_text("", dirty=False)
+        self._refresh_preview()
+
+    def open_file(self) -> None:
+        if not self._confirm_discard():
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Abrir Markdown",
+            str(self._path.parent) if self._path else "",
+            "Markdown (*.md *.markdown *.mdown);;Todos os arquivos (*)",
+        )
+        if not path:
+            return
+        opened = Path(path)
+        try:
+            text = opened.read_text(encoding="utf-8")
+        except OSError as exc:
+            QMessageBox.critical(self, "Erro ao abrir", str(exc))
+            return
+        self._path = opened
+        self._set_editor_text(text, dirty=False)
+        self._refresh_preview()
+
+    def save_file(self) -> bool:
+        if self._path is None:
+            return self.save_file_as()
+        return self._write_to(self._path)
+
+    def save_file_as(self) -> bool:
+        suggested = str(self._path) if self._path else "sem-titulo.md"
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Salvar Markdown",
+            suggested,
+            "Markdown (*.md *.markdown);;Todos os arquivos (*)",
+        )
+        if not path:
+            return False
+        target = Path(path)
+        if target.suffix == "":
+            target = target.with_suffix(".md")
+        if self._write_to(target):
+            self._path = target
+            self._update_title()
+            self._refresh_preview()
+            return True
+        return False
+
+    def _write_to(self, path: Path) -> bool:
+        try:
+            path.write_text(self.editor.toPlainText(), encoding="utf-8")
+        except OSError as exc:
+            QMessageBox.critical(self, "Erro ao salvar", str(exc))
+            return False
+        self._dirty = False
+        self._update_title()
+        return True
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        if self._confirm_discard():
+            event.accept()
+        else:
+            event.ignore()
+
+
+def run() -> None:
+    import sys
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    app.setApplicationName("MDReader")
+    configure_app(app)
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec())
