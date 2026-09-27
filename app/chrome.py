@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
+from PySide6.QtCore import QPoint, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -84,6 +84,27 @@ def _image_icon(color: str = "#b7c4cf") -> QIcon:
             QPoint(17, 15),
         ]
     )
+    painter.end()
+    return QIcon(pix)
+
+
+def _reload_icon() -> QIcon:
+    pix = QPixmap(40, 28)
+    pix.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pix)
+    font = QFont()
+    font.setBold(True)
+    font.setPointSize(13)
+    painter.setFont(font)
+    metrics = QFontMetrics(font)
+    parts = (("(", "#fff8f0"), ("R", "#e85d04"), (")", "#fff8f0"))
+    total = sum(metrics.horizontalAdvance(char) for char, _color in parts)
+    x = (pix.width() - total) / 2
+    y = (pix.height() + metrics.ascent() - metrics.descent()) / 2
+    for char, color in parts:
+        painter.setPen(QColor(color))
+        painter.drawText(int(x), int(y), char)
+        x += metrics.horizontalAdvance(char)
     painter.end()
     return QIcon(pix)
 
@@ -172,13 +193,14 @@ class FormatToolbar(QToolBar):
 
 class InsertRail(QWidget):
     image_requested = Signal()
+    reload_requested = Signal()
 
     def __init__(self, editor: MarkdownEditor, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("insertRail")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAutoFillBackground(True)
-        self.setFixedWidth(42)
+        self.setFixedWidth(46)
 
         link = _rail_button("[]", "Inserir ligação")
         link.clicked.connect(editor.insert_link)
@@ -192,6 +214,13 @@ class InsertRail(QWidget):
         inline.clicked.connect(editor.insert_inline_code)
         block = _rail_button("{ }", "Bloco de código")
         block.clicked.connect(editor.insert_code_block)
+        reload = QToolButton()
+        reload.setIcon(_reload_icon())
+        reload.setIconSize(QSize(40, 28))
+        reload.setAutoRaise(True)
+        reload.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        reload.setToolTip("Recarregar arquivo do disco")
+        reload.clicked.connect(self.reload_requested.emit)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 8, 4, 8)
@@ -201,6 +230,7 @@ class InsertRail(QWidget):
         layout.addWidget(inline, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(block, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.addStretch(1)
+        layout.addWidget(reload, alignment=Qt.AlignmentFlag.AlignHCenter)
 
 
 class StatusBar(QWidget):

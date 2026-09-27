@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+import time
 
-from PySide6.QtCore import QTimer, Qt, QUrl
+from PySide6.QtCore import QFileSystemWatcher, QTimer, Qt, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -92,8 +93,12 @@ class MainWindow(QMainWindow):
         self.resize(1280, 700)
         self._path: Path | None = None
         self._dirty = False
-        self._theme = "light"
+        self._theme = "dark"
         self._updating = False
+        self._external_change = False
+        self._ignore_watch_until = 0.0
+        self._watcher = QFileSystemWatcher(self)
+        self._watcher.fileChanged.connect(self._on_disk_changed)
 
         self.editor = MarkdownEditor()
         self.preview = create_preview()
@@ -105,6 +110,7 @@ class MainWindow(QMainWindow):
         toolbar.preview_toggled.connect(self.set_preview_visible)
         rail = InsertRail(self.editor)
         rail.image_requested.connect(self._pick_image)
+        rail.reload_requested.connect(self.reload_file)
         self.editor.image_dropped.connect(self._insert_image_file)
 
         self.preview_pane = QSplitter(Qt.Orientation.Horizontal)
@@ -288,10 +294,71 @@ class MainWindow(QMainWindow):
             return self.save_file()
         return True
 
+    def _watch_file(self, path: Path | None) -> None:
+        for existing in list(self._watcher.files()):
+            self._watcher.removePath(existing)
+        self._external_change = False
+        if path is not None and path.is_file():
+            self._watcher.addPath(str(path))
+
+    def _on_disk_changed(self, changed: str) -> None:
+        target = Path(changed)
+        if time.monotonic() < self._ignore_watch_until:
+            if target.is_file() and changed not in self._watcher.files():
+                self._watcher.addPath(changed)
+            return
+        if self._path is None or target.resolve() != self._path.resolve():
+            return
+        try:
+            disk = target.read_text(encoding="utf-8")
+        except OSError:
+            self.status.flash("Arquivo inacessível no disco")
+            return
+        if disk == self.editor.toPlainText():
+            if changed not in self._watcher.files() and target.is_file():
+                self._watcher.addPath(changed)
+            return
+        self._external_change = True
+        if self._dirty:
+            self.status.flash("Arquivo mudou no disco. Recarregar (R) perde as alterações locais", 4500)
+        else:
+            self.status.flash("Arquivo mudou no disco. Clique em (R) para recarregar", 4500)
+        if changed not in self._watcher.files() and target.is_file():
+            self._watcher.addPath(changed)
+
+    def reload_file(self) -> None:
+        if self._path is None:
+            self.status.flash("Nenhum arquivo aberto")
+            return
+        if not self._path.is_file():
+            QMessageBox.warning(self, "Recarregar", "O arquivo não existe mais no disco.")
+            return
+        if self._dirty:
+            answer = QMessageBox.warning(
+                self,
+                "Recarregar arquivo",
+                "Há alterações locais. Se recarregar, elas serão perdidas.\n\nDeseja recarregar do disco?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        try:
+            text = self._path.read_text(encoding="utf-8")
+        except OSError as exc:
+            QMessageBox.critical(self, "Erro ao recarregar", str(exc))
+            return
+        self._set_editor_text(text, dirty=False)
+        self._external_change = False
+        self._watch_file(self._path)
+        self._refresh_preview()
+        self.status.flash("Arquivo recarregado")
+
     def new_file(self) -> None:
         if not self._confirm_discard():
             return
         self._path = None
+        self._watch_file(None)
         self._set_editor_text("", dirty=False)
         self._refresh_preview(keep_scroll=False)
 
@@ -313,6 +380,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Erro ao abrir", str(exc))
             return
         self._path = opened
+        self._watch_file(opened)
         self._set_editor_text(text, dirty=False)
         self._refresh_preview(keep_scroll=False)
 
@@ -336,18 +404,22 @@ class MainWindow(QMainWindow):
             target = target.with_suffix(".md")
         if self._write_to(target):
             self._path = target
+            self._watch_file(target)
             self._update_title()
             self._refresh_preview()
             return True
         return False
 
     def _write_to(self, path: Path) -> bool:
+        self._ignore_watch_until = time.monotonic() + 1.0
         try:
             path.write_text(self.editor.toPlainText(), encoding="utf-8")
         except OSError as exc:
             QMessageBox.critical(self, "Erro ao salvar", str(exc))
             return False
         self._dirty = False
+        self._external_change = False
+        self._watch_file(path)
         self._update_title()
         return True
 
