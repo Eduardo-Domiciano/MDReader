@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Empacota um executável para Ubuntu com PyInstaller.
+# Empacota um único executável para Ubuntu com PyInstaller.
 # Depois: briefcase ou fpm podem gerar um .deb a partir de dist/MDReader.
 set -euo pipefail
 
@@ -14,15 +14,20 @@ fi
 source .venv/bin/activate
 python -m pip install "pyinstaller>=6.0"
 
+# --onefile gera dist/MDReader; remove a pasta do empacotamento antigo.
+rm -rf "$root/dist/MDReader"
+
 pyinstaller \
   --noconfirm \
+  --onefile \
   --windowed \
   --name MDReader \
-  --icon app/icon.png \
   --add-data "app/icon.png:app" \
   --collect-all PySide6_Essentials \
   app/__main__.py
 
+rm -f "$root/dist/mdreader.png" "$root/dist/mdreader.desktop"
+
 echo
-echo "Binário em dist/MDReader/MDReader"
-echo "Para um .deb no futuro: briefcase ou fpm sobre essa pasta."
+echo "Binário em dist/MDReader"
+echo "Para um .deb no futuro: briefcase ou fpm sobre esse arquivo."

@@ -19,18 +19,23 @@ from PySide6.QtGui import (
     QColor,
     QDesktopServices,
     QFont,
-    QFontMetrics,
     QPainter,
     QPaintEvent,
     QPen,
     QTextCursor,
+    QTextLength,
+    QTextOption,
+    QTextTable,
 )
 from PySide6.QtWidgets import QApplication, QTextBrowser, QWidget
 
 from app.callouts import apply_blockquote_callouts
 from app.images import apply_image_sizes, normalize_wiki_images, resolve_local_image_srcs
 
-_PRE_SPLIT_RE = re.compile(r"(<pre\b[^>]*>[\s\S]*?</pre>)", re.IGNORECASE)
+_PRE_SPLIT_RE = re.compile(
+    r"(<pre\b[^>]*>[\s\S]*?</pre>|<table\b[^>]*class=\"md-codeblock\"[^>]*>[\s\S]*?</table>)",
+    re.IGNORECASE,
+)
 _HEADING_HTML_RE = re.compile(r"<h([1-6])>([\s\S]*?)</h\1>", re.IGNORECASE)
 _CODE_RE = re.compile(r"<code\b[^>]*>([\s\S]*?)</code>", re.IGNORECASE)
 _COPY_PAYLOADS: dict[str, str] = {}
@@ -87,8 +92,8 @@ ALLOWED_TAGS = [
 ALLOWED_ATTRIBUTES = {
     "a": ["href", "title", "name", "id"],
     "img": ["src", "alt", "title", "width", "height"],
-    "td": ["align", "id"],
-    "th": ["align", "id"],
+    "td": ["align", "id", "width"],
+    "th": ["align", "id", "width"],
     "code": ["class", "id"],
     "div": ["class", "id"],
     "span": ["class", "id"],
@@ -104,7 +109,7 @@ ALLOWED_ATTRIBUTES = {
     "ul": ["id"],
     "ol": ["id"],
     "li": ["id"],
-    "table": ["id", "class"],
+    "table": ["id", "class", "width"],
     "hr": ["id"],
 }
 
@@ -178,6 +183,9 @@ class CopyCodeBrowser(QTextBrowser):
             | Qt.TextInteractionFlag.LinksAccessibleByMouse
         )
         self.anchorClicked.connect(self._on_anchor)
+        option = self.document().defaultTextOption()
+        option.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+        self.document().setDefaultTextOption(option)
         self._cmd_text = _CMD_TEXT
         self._cmd_fill = _CMD_FILL
         self._cmd_border = _CMD_BORDER
@@ -248,49 +256,118 @@ class CopyCodeBrowser(QTextBrowser):
         finally:
             painter.end()
 
-    def _command_chips(self) -> list[tuple[QRectF, QRectF, str, QFont]]:
+    def _chip_rect_ok(self, rect: QRectF) -> bool:
+        if rect.width() <= 0 or rect.height() <= 0:
+            return False
+        viewport = self.viewport().rect()
+        if rect.height() > max(viewport.height() * 0.35, 48):
+            return False
+        if rect.width() > viewport.width() + 24:
+            return False
+        return True
+
+    def _in_code_table(self, position: int) -> bool:
         cursor = self.textCursor()
-        chips: list[tuple[QRectF, QRectF, str, QFont]] = []
+        last = max(self.document().characterCount() - 1, 0)
+        cursor.setPosition(min(max(position, 0), last))
+        table = cursor.currentTable()
+        if table is None:
+            return False
+        return table.cellAt(0, 0).firstCursorPosition().block().text().strip() == "Código"
+
+    def _line_cursor_x(self, line, pos_in_block: int) -> float:
+        value = line.cursorToX(pos_in_block)
+        return float(value[0] if isinstance(value, tuple) else value)
+
+    def _command_line_rects(self, start: int, end: int) -> list[tuple[QRectF, int, int]]:
+        if end <= start:
+            return []
+        doc = self.document()
+        engine = doc.documentLayout()
+        if engine is None:
+            return []
+        shift_x = -self.horizontalScrollBar().value()
+        shift_y = -self.verticalScrollBar().value()
+        rects: list[tuple[QRectF, int, int]] = []
+        pos = start
+        for _ in range(32):
+            if pos >= end:
+                break
+            block = doc.findBlock(pos)
+            if not block.isValid():
+                break
+            layout = block.layout()
+            if layout is None:
+                break
+            pos_in_block = pos - block.position()
+            line = layout.lineForTextPosition(pos_in_block)
+            if not line.isValid():
+                break
+            line_end = line.textStart() + line.textLength()
+            frag_end = min(end - block.position(), line_end)
+            if frag_end <= pos_in_block:
+                pos = block.position() + pos_in_block + 1
+                continue
+            x1 = self._line_cursor_x(line, pos_in_block)
+            x2 = self._line_cursor_x(line, frag_end)
+            block_rect = engine.blockBoundingRect(block)
+            rect = QRectF(
+                block_rect.left() + min(x1, x2) + shift_x,
+                block_rect.top() + line.y() + shift_y,
+                max(abs(x2 - x1), 1.0),
+                max(line.height(), 1.0),
+            )
+            if self._chip_rect_ok(rect):
+                rects.append((rect, pos, block.position() + frag_end))
+            pos = block.position() + frag_end
+        return rects
+
+    def _range_text(self, start: int, end: int) -> str:
+        cursor = self.textCursor()
+        last = max(self.document().characterCount() - 1, 0)
+        cursor.setPosition(min(max(start, 0), last))
+        cursor.setPosition(min(max(end, 0), last), QTextCursor.MoveMode.KeepAnchor)
+        return (
+            cursor.selectedText()
+            .replace("\u2028", "")
+            .replace("\u2029", "")
+            .replace("\ufffc", "")
+        )
+
+    def _command_chips(self) -> list[tuple[QRectF, QRectF, str, QFont]]:
+        chips: list[tuple[QRectF, QRectF, str, QFont, str]] = []
         block = self.document().begin()
         while block.isValid():
             it = block.begin()
             while not it.atEnd():
                 fragment = it.fragment()
                 fmt = fragment.charFormat()
-                if fmt.anchorHref().startswith("mdcopy:"):
-                    label = (
-                        fragment.text()
-                        .replace("\u2028", "")
-                        .replace("\u2029", "")
-                        .replace("\ufffc", "")
-                    )
+                href = fmt.anchorHref()
+                if href.startswith("mdcopy:") and not self._in_code_table(fragment.position()):
                     start = fragment.position()
-                    after = min(start + fragment.length(), max(self.document().characterCount() - 1, 0))
-                    cursor.setPosition(start)
-                    left = self.cursorRect(cursor)
-                    cursor.setPosition(after)
-                    right = self.cursorRect(cursor)
-                    text_rect = QRectF(left.united(right))
-                    metrics = QFontMetrics(fmt.font())
-                    needed_w = metrics.horizontalAdvance(label)
-                    needed_h = metrics.height()
-                    if text_rect.width() < needed_w:
-                        text_rect.setWidth(float(needed_w))
-                    if text_rect.height() < needed_h:
-                        extra = needed_h - text_rect.height()
-                        text_rect.adjust(0, -extra / 2, 0, extra / 2)
-                    box = text_rect.adjusted(-3, -2, 3, 2)
-                    href = fmt.anchorHref()
-                    if chips and chips[-1][4] == href and chips[-1][0].intersects(box.adjusted(-2, -2, 2, 2)):
-                        prev_box, prev_text, prev_label, prev_font, _href = chips[-1]
-                        chips[-1] = (
-                            prev_box.united(box),
-                            prev_text.united(text_rect),
-                            prev_label + label,
-                            prev_font,
-                            href,
-                        )
-                    else:
+                    end = start + fragment.length()
+                    for text_rect, frag_start, frag_end in self._command_line_rects(start, end):
+                        label = self._range_text(frag_start, frag_end)
+                        if not label:
+                            continue
+                        box = text_rect.adjusted(-3, -2, 3, 2)
+                        if chips and chips[-1][4] == href:
+                            prev_box, prev_text, prev_label, prev_font, _href = chips[-1]
+                            same_line = abs(prev_box.center().y() - box.center().y()) < max(
+                                prev_box.height(), box.height()
+                            ) * 0.6
+                            adjacent = prev_box.right() + 6 >= box.left()
+                            if same_line and adjacent:
+                                merged = prev_text.united(text_rect)
+                                if self._chip_rect_ok(merged):
+                                    chips[-1] = (
+                                        prev_box.united(box),
+                                        merged,
+                                        prev_label + label,
+                                        prev_font,
+                                        href,
+                                    )
+                                    continue
                         chips.append((box, text_rect, label, fmt.font(), href))
                 it += 1
             block = block.next()
@@ -400,6 +477,7 @@ class TextBrowserPreview:
             view.setSearchPaths([])
         view.setHtml(document)
         view.flatten_command_formats()
+        _fit_preview_tables(view)
 
         def restore() -> None:
             vbar.setValue(min(saved[0], vbar.maximum()))
@@ -513,18 +591,62 @@ def linkify_inline_code(body: str) -> str:
 
     parts: list[str] = []
     for part in _PRE_SPLIT_RE.split(body):
-        if part.lower().startswith("<pre"):
+        lowered = part.lower()
+        if lowered.startswith("<pre") or 'class="md-codeblock"' in lowered:
             parts.append(part)
         else:
             parts.append(_CODE_RE.sub(replace_code, part))
     return "".join(parts)
 
 
+_TD_ALIGN_RE = re.compile(
+    r"<(t[dh])(\s[^>]*)?\sstyle=\"text-align:(\w+)\"([^>]*)>",
+    re.IGNORECASE,
+)
+
+
+def apply_table_align(body: str) -> str:
+    """Converte text-align do markdown-it no atributo align, que o Qt respeita."""
+
+    def replace(match: re.Match[str]) -> str:
+        tag, before, align, after = match.group(1), match.group(2) or "", match.group(3), match.group(4)
+        before = re.sub(r'\sstyle="[^"]*"', "", before)
+        after = re.sub(r'\sstyle="[^"]*"', "", after)
+        return f'<{tag}{before} align="{align}"{after}>'
+
+    return _TD_ALIGN_RE.sub(replace, body)
+
+
+def _fit_preview_tables(view: QTextBrowser) -> None:
+    def walk(frame) -> None:
+        iterator = frame.begin()
+        while not iterator.atEnd():
+            child = iterator.currentFrame()
+            if child is not None:
+                if isinstance(child, QTextTable):
+                    first = child.cellAt(0, 0).firstCursorPosition().block().text().strip()
+                    if first != "Código":
+                        fmt = child.format()
+                        fmt.setWidth(QTextLength(QTextLength.Type.PercentageLength, 100))
+                        cols = child.columns()
+                        if cols:
+                            share = 100.0 / cols
+                            fmt.setColumnWidthConstraints(
+                                [QTextLength(QTextLength.Type.PercentageLength, share)] * cols
+                            )
+                        child.setFormat(fmt)
+                else:
+                    walk(child)
+            iterator += 1
+
+    walk(view.document().rootFrame())
+
+
 def markdown_to_body(source: str, theme: str = "dark") -> str:
     _COPY_PAYLOADS.clear()
     normalized, sizes = normalize_wiki_images(source)
     cleaned = bleach.clean(
-        _MD.render(normalized),
+        apply_table_align(_MD.render(normalized)),
         tags=ALLOWED_TAGS,
         attributes=ALLOWED_ATTRIBUTES,
         protocols=["http", "https", "mailto", "file"],
@@ -701,6 +823,7 @@ def wrap_preview_html(body: str, theme: str = "dark") -> str:
   }}
   table {{
     width: 100%;
+    table-layout: fixed;
     margin: 0.75em 0;
     border-collapse: collapse;
     font-size: 0.85rem;
@@ -708,7 +831,11 @@ def wrap_preview_html(body: str, theme: str = "dark") -> str:
   th, td {{
     padding: 0.4rem 0.55rem;
     border: 1px solid {border};
-    text-align: left;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+  }}
+  table.md-codeblock {{
+    table-layout: auto;
   }}
   table.md-codeblock td {{
     border: none;

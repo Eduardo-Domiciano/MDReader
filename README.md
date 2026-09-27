@@ -35,7 +35,7 @@ Executável local (PyInstaller):
 ./scripts/package.sh
 ```
 
-O binário fica em `dist/MDReader/MDReader`. O `.deb` e os instaladores de outros sistemas ficam para um passo seguinte. Não é preciso reescrever o app.
+O binário fica em um único arquivo, `dist/MDReader`. O `.deb` e os instaladores de outros sistemas ficam para um passo seguinte. Não é preciso reescrever o app.
 
 ## Como as imagens são salvas
 
@@ -44,7 +44,7 @@ Ao escolher uma imagem na barra esquerda ou arrastá-la para o editor, o MDReade
 - A cópia vai para a pasta **`img/`** ao lado do executável. No desenvolvimento (`python -m app`), isso é a raiz do projeto.
 - No Markdown entra um caminho relativo, por exemplo `img/foto.png`.
 - Se o nome já existir, grava `foto-2.png`, `foto-3.png`, e assim por diante.
-- A pasta é criada na primeira inserção. Com o app empacotado, `img/` fica ao lado de `dist/MDReader/MDReader`.
+- A pasta é criada na primeira inserção. Com o app empacotado, `img/` fica ao lado de `dist/MDReader`.
 
 Sintaxe no texto (tamanhos no estilo Wiki.js):
 
