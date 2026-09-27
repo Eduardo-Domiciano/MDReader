@@ -109,6 +109,40 @@ QWidget#insertRail QToolButton:hover {{
   background: rgba(61, 157, 106, 0.18);
   color: {TEXT_STRONG};
 }}
+QWidget#outlineRail {{
+  background: {RAIL_BG};
+  border-left: 1px solid rgba(61, 157, 106, 0.16);
+}}
+QLabel#outlineTitle {{
+  color: {TEXT_STRONG};
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  padding: 10px 12px 6px;
+}}
+QLabel#outlineEmpty {{
+  color: {STATUS_FG};
+  font-size: 12px;
+  padding: 4px 12px 12px;
+}}
+QListWidget#outlineList {{
+  background: transparent;
+  border: none;
+  color: {TEXT};
+  outline: none;
+  padding: 2px 6px 8px;
+}}
+QListWidget#outlineList::item {{
+  padding: 5px 8px;
+  border-radius: 4px;
+}}
+QListWidget#outlineList::item:hover {{
+  background: rgba(61, 157, 106, 0.18);
+}}
+QListWidget#outlineList::item:selected {{
+  background: rgba(61, 157, 106, 0.28);
+  color: {TEXT_STRONG};
+}}
 QWidget#statusBar {{
   background: {STATUS_BG};
   color: {STATUS_FG};
@@ -214,6 +248,40 @@ QWidget#insertRail QToolButton {
 }
 QWidget#insertRail QToolButton:hover {
   background: rgba(61, 157, 106, 0.18);
+}
+QWidget#outlineRail {
+  background: #e8eeea;
+  border-left: 1px solid rgba(61, 157, 106, 0.2);
+}
+QLabel#outlineTitle {
+  color: #1a1f26;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  padding: 10px 12px 6px;
+}
+QLabel#outlineEmpty {
+  color: #5a6a62;
+  font-size: 12px;
+  padding: 4px 12px 12px;
+}
+QListWidget#outlineList {
+  background: transparent;
+  border: none;
+  color: #222222;
+  outline: none;
+  padding: 2px 6px 8px;
+}
+QListWidget#outlineList::item {
+  padding: 5px 8px;
+  border-radius: 4px;
+}
+QListWidget#outlineList::item:hover {
+  background: rgba(61, 157, 106, 0.18);
+}
+QListWidget#outlineList::item:selected {
+  background: rgba(61, 157, 106, 0.28);
+  color: #1a1f26;
 }
 QWidget#statusBar {
   background: #e4eae6;

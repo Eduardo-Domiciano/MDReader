@@ -17,12 +17,51 @@ from PySide6.QtWidgets import (
 
 from app.chrome import FormatToolbar, InsertRail, StatusBar
 from app.editor import MarkdownEditor
+from app.outline import OutlineRail, extract_headings
 from app.preview import create_preview, render_preview
 from app.theme import apply_theme, configure_app
 
 WELCOME_MARKDOWN = """# MDReader
 
 Escreva Markdown à esquerda e veja o resultado à direita.
+
+## Títulos
+
+# Título 1
+## Título 2
+### Título 3
+#### Título 4
+##### Título 5
+
+## Formatação
+
+Texto em **negrito**, em *itálico* e ~~rasurado~~.
+
+## Ligação e código
+
+Uma [ligação](https://example.com) e um comando inline: `ls -la`.
+
+```python
+print("olá, markdown")
+```
+
+## Avisos
+
+> Informação útil para o leitor.
+
+{.is-info}
+
+> Atenção: verifique antes de continuar.
+
+{.is-warning}
+
+> Perigo: esta ação não pode ser desfeita.
+
+{.is-danger}
+
+> Anotação para consulta posterior.
+
+{.is-record}
 
 ## Atalhos
 
@@ -31,10 +70,6 @@ Escreva Markdown à esquerda e veja o resultado à direita.
 - **Ctrl+S** — salvar
 - **Ctrl+B** — negrito
 - **Ctrl+I** — itálico
-
-```python
-print("olá, markdown")
-```
 """
 
 PREVIEW_DEBOUNCE_MS = 200
@@ -43,7 +78,7 @@ PREVIEW_DEBOUNCE_MS = 200
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.resize(1100, 700)
+        self.resize(1280, 700)
         self._path: Path | None = None
         self._dirty = False
         self._theme = "dark"
@@ -51,20 +86,31 @@ class MainWindow(QMainWindow):
 
         self.editor = MarkdownEditor()
         self.preview = create_preview()
+        self.outline = OutlineRail()
+        self.outline.heading_activated.connect(self._go_to_heading)
         self.status = StatusBar()
 
         toolbar = FormatToolbar(self.editor)
         toolbar.preview_toggled.connect(self.set_preview_visible)
         rail = InsertRail(self.editor)
 
+        self.preview_pane = QSplitter(Qt.Orientation.Horizontal)
+        self.preview_pane.setObjectName("previewPane")
+        self.preview_pane.addWidget(self.preview.widget())
+        self.preview_pane.addWidget(self.outline)
+        self.preview_pane.setSizes([420, 200])
+        self.preview_pane.setStretchFactor(0, 1)
+        self.preview_pane.setStretchFactor(1, 0)
+        self.preview_pane.setChildrenCollapsible(False)
+
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.addWidget(self.editor)
-        self.splitter.addWidget(self.preview.widget())
-        self.splitter.setSizes([550, 550])
+        self.splitter.addWidget(self.preview_pane)
+        self.splitter.setSizes([550, 620])
         self.splitter.setStretchFactor(0, 1)
         self.splitter.setStretchFactor(1, 1)
         self.splitter.setChildrenCollapsible(False)
-        self._preview_sizes = [550, 550]
+        self._preview_sizes = [550, 620]
 
         main_row = QWidget()
         main_row.setObjectName("workspace")
@@ -103,14 +149,18 @@ class MainWindow(QMainWindow):
         self._update_status()
 
     def set_preview_visible(self, visible: bool) -> None:
-        pane = self.preview.widget()
+        pane = self.preview_pane
         if visible:
             pane.show()
-            self.splitter.setSizes(self._preview_sizes or [550, 550])
+            self.splitter.setSizes(self._preview_sizes or [550, 620])
             self._refresh_preview()
         else:
             self._preview_sizes = self.splitter.sizes()
             pane.hide()
+
+    def _go_to_heading(self, index: int, line: int) -> None:
+        self.preview.scroll_to_heading(index)
+        self.editor.go_to_line(line)
 
     def _bold(self) -> None:
         self.editor.wrap_markup("**", placeholder="negrito")
@@ -154,11 +204,13 @@ class MainWindow(QMainWindow):
         self.status.set_cursor(line, col)
 
     def _refresh_preview(self) -> None:
-        html = render_preview(self.editor.toPlainText(), self._theme)
+        source = self.editor.toPlainText()
+        html = render_preview(source, self._theme)
         base = None
         if self._path is not None:
             base = QUrl.fromLocalFile(str(self._path.parent) + "/")
         self.preview.set_html(html, base)
+        self.outline.set_headings(extract_headings(source))
 
     def set_theme(self, theme: str) -> None:
         self._theme = theme

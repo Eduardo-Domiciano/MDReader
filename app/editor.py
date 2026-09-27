@@ -28,6 +28,15 @@ class MarkdownEditor(QPlainTextEdit):
         cursor = self.textCursor()
         return cursor.blockNumber() + 1, cursor.positionInBlock() + 1
 
+    def go_to_line(self, line: int) -> None:
+        block = self.document().findBlockByNumber(line)
+        if not block.isValid():
+            return
+        cursor = self.textCursor()
+        cursor.setPosition(block.position())
+        self.setTextCursor(cursor)
+        self.centerCursor()
+
     def _replace_and_select(self, next_text: str, sel_start: int, sel_end: int) -> None:
         cursor = self.textCursor()
         cursor.beginEditBlock()

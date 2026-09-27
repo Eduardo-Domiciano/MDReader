@@ -28,6 +28,7 @@ from PySide6.QtWidgets import QApplication, QTextBrowser, QWidget
 from app.callouts import apply_blockquote_callouts
 
 _PRE_SPLIT_RE = re.compile(r"(<pre\b[^>]*>[\s\S]*?</pre>)", re.IGNORECASE)
+_HEADING_HTML_RE = re.compile(r"<h([1-6])>([\s\S]*?)</h\1>", re.IGNORECASE)
 _CODE_RE = re.compile(r"<code\b[^>]*>([\s\S]*?)</code>", re.IGNORECASE)
 _COPY_PAYLOADS: dict[str, str] = {}
 _COPY_BTN_STYLE = (
@@ -119,6 +120,8 @@ class PreviewSurface(Protocol):
     def widget(self) -> QWidget: ...
 
     def set_html(self, document: str, base_url: QUrl | None = None) -> None: ...
+
+    def scroll_to_heading(self, index: int) -> None: ...
 
 
 class CopyCodeBrowser(QTextBrowser):
@@ -216,6 +219,33 @@ class TextBrowserPreview:
 
     def widget(self) -> QWidget:
         return self._view
+
+    def scroll_to_heading(self, index: int) -> None:
+        view = self._view
+        doc = view.document()
+        name = f"toc-{index}"
+        target = None
+        found = 0
+        block = doc.begin()
+        while block.isValid():
+            names: list[str] = []
+            it = block.begin()
+            while not it.atEnd():
+                names.extend(it.fragment().charFormat().anchorNames())
+                it += 1
+            is_heading = block.blockFormat().headingLevel() > 0 or name in names
+            if is_heading:
+                if name in names or found == index:
+                    target = block
+                    break
+                found += 1
+            block = block.next()
+        if target is None:
+            view.scrollToAnchor(name)
+            return
+        top = int(doc.documentLayout().blockBoundingRect(target).top())
+        bar = view.verticalScrollBar()
+        bar.setValue(min(max(top - 8, bar.minimum()), bar.maximum()))
 
     def set_html(self, document: str, base_url: QUrl | None = None) -> None:
         if base_url is not None and base_url.isLocalFile():
@@ -342,7 +372,23 @@ def markdown_to_body(source: str) -> str:
         protocols=["http", "https", "mailto"],
         strip=True,
     )
-    return linkify_inline_code(wrap_fenced_code_blocks(apply_blockquote_callouts(cleaned)))
+    return inject_heading_anchors(
+        linkify_inline_code(wrap_fenced_code_blocks(apply_blockquote_callouts(cleaned)))
+    )
+
+
+def inject_heading_anchors(body: str) -> str:
+    index = 0
+
+    def replace(match: re.Match[str]) -> str:
+        nonlocal index
+        level = match.group(1)
+        inner = match.group(2)
+        name = f"toc-{index}"
+        index += 1
+        return f'<h{level}><a name="{name}"></a>{inner}</h{level}>'
+
+    return _HEADING_HTML_RE.sub(replace, body)
 
 
 def wrap_preview_html(body: str, theme: str = "dark") -> str:
