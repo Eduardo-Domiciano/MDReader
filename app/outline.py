@@ -79,6 +79,8 @@ class OutlineRail(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("outlineRail")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setAutoFillBackground(True)
         self.setMinimumWidth(156)
         self.setMaximumWidth(320)
 

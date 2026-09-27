@@ -21,6 +21,12 @@ CALLOUT_INLINE_STYLE = {
     "danger": "border-left: 3px solid #d45454; background-color: rgba(212, 84, 84, 0.14); color: #e8ecf0;",
     "record": "border-left: 3px solid #9b6dd6; background-color: rgba(155, 109, 214, 0.16); color: #e8ecf0;",
 }
+CALLOUT_INLINE_STYLE_LIGHT = {
+    "info": "border-left: 3px solid #3d8fd9; background-color: rgba(61, 143, 217, 0.14); color: #1a1a1a;",
+    "warning": "border-left: 3px solid #e09a3e; background-color: rgba(224, 154, 62, 0.14); color: #1a1a1a;",
+    "danger": "border-left: 3px solid #d45454; background-color: rgba(212, 84, 84, 0.14); color: #1a1a1a;",
+    "record": "border-left: 3px solid #9b6dd6; background-color: rgba(155, 109, 214, 0.16); color: #1a1a1a;",
+}
 
 _KIND_GROUP = "info|warning|danger|record"
 CALLOUT_FENCE_RE = re.compile(
@@ -32,15 +38,18 @@ CALLOUT_HTML_RE = re.compile(
     re.IGNORECASE,
 )
 _AFTER_BLOCK_RE = re.compile(
-    rf"(<blockquote\b[^>]*>[\s\S]*?</blockquote>)\s*<p>\s*(\{{\s*\.?(?:is[.-])?(?:{_KIND_GROUP})\s*\}})\s*</p>",
+    rf"(<blockquote\b[^>]*>[\s\S]*?</blockquote>)\s*<p\b[^>]*>\s*"
+    rf"(\{{\s*\.?(?:is[.-])?(?:{_KIND_GROUP})\s*\}})\s*</p>",
     re.IGNORECASE,
 )
 _FENCE_FIRST_P_RE = re.compile(
-    rf"<blockquote(\b[^>]*)>\s*<p>\s*(\{{\s*\.?(?:is[.-])?(?:{_KIND_GROUP})\s*\}})\s*</p>",
+    rf"<blockquote(\b[^>]*)>\s*<p\b[^>]*>\s*"
+    rf"(\{{\s*\.?(?:is[.-])?(?:{_KIND_GROUP})\s*\}})\s*</p>",
     re.IGNORECASE,
 )
 _FENCE_IN_P_RE = re.compile(
-    rf"<blockquote(\b[^>]*)>\s*<p>\s*(\{{\s*\.?(?:is[.-])?(?:{_KIND_GROUP})\s*\}})\s*(?:<br\s*/?>|\s+)",
+    rf"<blockquote(\b[^>]*)>\s*<p\b[^>]*>\s*"
+    rf"(\{{\s*\.?(?:is[.-])?(?:{_KIND_GROUP})\s*\}})\s*(?:<br\s*/?>|\s+)",
     re.IGNORECASE,
 )
 
@@ -103,7 +112,7 @@ def expand_callout_range(text: str, start: int, end: int) -> tuple[int, int]:
     return from_, to
 
 
-def _with_callout_class(open_tag: str, kind: str) -> str:
+def _with_callout_class(open_tag: str, kind: str, theme: str = "dark") -> str:
     cls = f"is-{kind}"
     if re.search(r"\bclass\s*=", open_tag, re.IGNORECASE):
         def _replace(match: re.Match[str]) -> str:
@@ -116,20 +125,21 @@ def _with_callout_class(open_tag: str, kind: str) -> str:
         open_tag = re.sub(r"class=(['\"])([^'\"]*)\1", _replace, open_tag, count=1, flags=re.IGNORECASE)
     else:
         open_tag = re.sub(r"<blockquote\b", f'<blockquote class="{cls}"', open_tag, count=1, flags=re.IGNORECASE)
-    style = CALLOUT_INLINE_STYLE[kind]
+    styles = CALLOUT_INLINE_STYLE_LIGHT if theme == "light" else CALLOUT_INLINE_STYLE
+    style = styles[kind]
     if re.search(r"\bstyle\s*=", open_tag, re.IGNORECASE):
         return open_tag
     return re.sub(r"<blockquote\b", f'<blockquote style="{style}"', open_tag, count=1, flags=re.IGNORECASE)
 
 
-def apply_blockquote_callouts(html: str) -> str:
+def apply_blockquote_callouts(html: str, theme: str = "dark") -> str:
     def after_block(match: re.Match[str]) -> str:
         kind = parse_callout_kind(match.group(2))
         if not kind:
             return match.group(0)
         return re.sub(
             r"<blockquote\b[^>]*>",
-            lambda tag: _with_callout_class(tag.group(0), kind),
+            lambda tag: _with_callout_class(tag.group(0), kind, theme),
             match.group(1),
             count=1,
             flags=re.IGNORECASE,
@@ -139,13 +149,13 @@ def apply_blockquote_callouts(html: str) -> str:
         kind = parse_callout_kind(match.group(2))
         if not kind:
             return match.group(0)
-        return _with_callout_class(f"<blockquote{match.group(1)}>", kind)
+        return _with_callout_class(f"<blockquote{match.group(1)}>", kind, theme)
 
     def fence_in_p(match: re.Match[str]) -> str:
         kind = parse_callout_kind(match.group(2))
         if not kind:
             return match.group(0)
-        return f"{_with_callout_class(f'<blockquote{match.group(1)}>', kind)}<p>"
+        return f"{_with_callout_class(f'<blockquote{match.group(1)}>', kind, theme)}<p>"
 
     out = _AFTER_BLOCK_RE.sub(after_block, html)
     out = _FENCE_FIRST_P_RE.sub(fence_first, out)

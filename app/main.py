@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from app.chrome import FormatToolbar, InsertRail, StatusBar
 from app.editor import MarkdownEditor
+from app.images import relative_image_path, store_image
 from app.outline import OutlineRail, extract_headings
 from app.preview import create_preview, render_preview
 from app.theme import apply_theme, configure_app
@@ -40,6 +41,16 @@ Texto em **negrito**, em *itálico* e ~~rasurado~~.
 ## Ligação e código
 
 Uma [ligação](https://example.com) e um comando inline: `ls -la`.
+
+## Imagem
+
+Escolha um arquivo no botão da barra esquerda, ou arraste a imagem para o editor.
+
+```markdown
+![legenda](arquivo.png)
+![legenda](arquivo.png =240x)
+![legenda](arquivo.png =100%x)
+```
 
 ```python
 print("olá, markdown")
@@ -81,7 +92,7 @@ class MainWindow(QMainWindow):
         self.resize(1280, 700)
         self._path: Path | None = None
         self._dirty = False
-        self._theme = "dark"
+        self._theme = "light"
         self._updating = False
 
         self.editor = MarkdownEditor()
@@ -93,6 +104,8 @@ class MainWindow(QMainWindow):
         toolbar = FormatToolbar(self.editor)
         toolbar.preview_toggled.connect(self.set_preview_visible)
         rail = InsertRail(self.editor)
+        rail.image_requested.connect(self._pick_image)
+        self.editor.image_dropped.connect(self._insert_image_file)
 
         self.preview_pane = QSplitter(Qt.Orientation.Horizontal)
         self.preview_pane.setObjectName("previewPane")
@@ -137,6 +150,7 @@ class MainWindow(QMainWindow):
 
         self.editor.textChanged.connect(self._on_text_changed)
         self.editor.cursorPositionChanged.connect(self._update_status)
+        self.editor.cursorPositionChanged.connect(self._sync_preview_to_editor)
         self.preview.code_copied.connect(lambda: self.status.flash("Copiado"))
         QShortcut(QKeySequence.StandardKey.Bold, self, self._bold)
         QShortcut(QKeySequence.StandardKey.Italic, self, self._italic)
@@ -203,14 +217,40 @@ class MainWindow(QMainWindow):
         line, col = self.editor.cursor_line_col()
         self.status.set_cursor(line, col)
 
-    def _refresh_preview(self) -> None:
+    def _refresh_preview(self, *, keep_scroll: bool = True) -> None:
         source = self.editor.toPlainText()
-        html = render_preview(source, self._theme)
+        base_dir = self._path.parent if self._path is not None else None
+        html = render_preview(source, self._theme, base_dir)
         base = None
         if self._path is not None:
             base = QUrl.fromLocalFile(str(self._path.parent) + "/")
-        self.preview.set_html(html, base)
+        self.preview.set_html(html, base, keep_scroll=keep_scroll, theme=self._theme)
         self.outline.set_headings(extract_headings(source))
+        if keep_scroll:
+            QTimer.singleShot(0, self._sync_preview_to_editor)
+
+    def _sync_preview_to_editor(self) -> None:
+        if self._updating or not self.preview_pane.isVisible():
+            return
+        self.preview.scroll_to_source_line(self.editor.textCursor().blockNumber())
+
+    def _pick_image(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Inserir imagem",
+            str(self._path.parent) if self._path else "",
+            "Imagens (*.png *.jpg *.jpeg *.gif *.webp *.bmp *.svg);;Todos os arquivos (*)",
+        )
+        if path:
+            self._insert_image_file(path)
+
+    def _insert_image_file(self, path: str) -> None:
+        try:
+            stored = store_image(Path(path))
+        except OSError as exc:
+            QMessageBox.critical(self, "Erro ao guardar imagem", str(exc))
+            return
+        self.editor.insert_image(relative_image_path(stored, self._path))
 
     def set_theme(self, theme: str) -> None:
         self._theme = theme
@@ -253,7 +293,7 @@ class MainWindow(QMainWindow):
             return
         self._path = None
         self._set_editor_text("", dirty=False)
-        self._refresh_preview()
+        self._refresh_preview(keep_scroll=False)
 
     def open_file(self) -> None:
         if not self._confirm_discard():
@@ -274,7 +314,7 @@ class MainWindow(QMainWindow):
             return
         self._path = opened
         self._set_editor_text(text, dirty=False)
-        self._refresh_preview()
+        self._refresh_preview(keep_scroll=False)
 
     def save_file(self) -> bool:
         if self._path is None:

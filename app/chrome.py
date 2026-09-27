@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
@@ -62,6 +62,30 @@ def _format_button(
     font.setStrikeOut(strike)
     btn.setFont(font)
     return btn
+
+
+def _image_icon(color: str = "#b7c4cf") -> QIcon:
+    pix = QPixmap(20, 20)
+    pix.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pix)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(QColor(color))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawRoundedRect(2, 4, 16, 12, 2, 2)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor(color))
+    painter.drawEllipse(12, 6, 3, 3)
+    painter.drawPolygon(
+        [
+            QPoint(3, 15),
+            QPoint(8, 9),
+            QPoint(11, 12),
+            QPoint(13, 10),
+            QPoint(17, 15),
+        ]
+    )
+    painter.end()
+    return QIcon(pix)
 
 
 def _rail_button(text: str, tooltip: str) -> QToolButton:
@@ -147,13 +171,23 @@ class FormatToolbar(QToolBar):
 
 
 class InsertRail(QWidget):
+    image_requested = Signal()
+
     def __init__(self, editor: MarkdownEditor, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("insertRail")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setAutoFillBackground(True)
         self.setFixedWidth(42)
 
         link = _rail_button("[]", "Inserir ligação")
         link.clicked.connect(editor.insert_link)
+        image = QToolButton()
+        image.setIcon(_image_icon("#fff8f0"))
+        image.setAutoRaise(True)
+        image.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        image.setToolTip("Inserir imagem")
+        image.clicked.connect(self.image_requested.emit)
         inline = _rail_button("`x`", "Comando inline")
         inline.clicked.connect(editor.insert_inline_code)
         block = _rail_button("{ }", "Bloco de código")
@@ -163,6 +197,7 @@ class InsertRail(QWidget):
         layout.setContentsMargins(4, 8, 4, 8)
         layout.setSpacing(4)
         layout.addWidget(link, alignment=Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(image, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(inline, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(block, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.addStretch(1)
@@ -172,6 +207,8 @@ class StatusBar(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("statusBar")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setAutoFillBackground(True)
         self.setFixedHeight(24)
 
         self._kind = QLabel("Markdown")

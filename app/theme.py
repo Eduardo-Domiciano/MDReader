@@ -1,32 +1,29 @@
-"""Paleta e QSS do tutorial-editor do LGC."""
+"""Temas claro e escuro no estilo Remember Me."""
 
 from PySide6.QtWidgets import QApplication, QWidget
 
-PAGE_BG = "#11151a"
-CARD_BG = "#14191f"
-META_BG = "#1a1f26"
-EDITOR_BG = "#0e1217"
-RAIL_BG = "#10151b"
-STATUS_BG = "#0c1015"
-STATUS_FG = "#7d8a96"
-TEXT = "#dce4ec"
-TEXT_STRONG = "#e8ecf0"
-ACCENT = "#3d9d6a"
-TOOLBAR_BG = "#2f8a58"
-TOOLBAR_FG = "#f4fff8"
-LINK = "#7dcea0"
-CODE_BG = "#07090c"
-BORDER = "rgba(61, 157, 106, 0.22)"
+# Escuro: laranja em destaque sobre preto, cinza e branco.
+_RM_PAGE = "#0e0c0b"
+_RM_META = "#161412"
+_RM_EDITOR = "#100e0d"
+_RM_RAIL = "#12100f"
+_RM_STATUS = "#0a0908"
+_RM_STATUS_FG = "#9a8f86"
+_RM_TEXT = "#ece6e0"
+_RM_STRONG = "#fff8f2"
+_RM_BAR = "#e85d04"
+_RM_BAR_FG = "#fff8f0"
+_RM_ORANGE = "255, 106, 26"
 
 DARK_QSS = f"""
 QMainWindow, QWidget#workspace {{
-  background: {PAGE_BG};
-  color: {TEXT};
+  background: {_RM_PAGE};
+  color: {_RM_TEXT};
 }}
 QMenuBar {{
-  background: {META_BG};
-  color: {TEXT_STRONG};
-  border-bottom: 1px solid {BORDER};
+  background: {_RM_META};
+  color: {_RM_STRONG};
+  border-bottom: 1px solid rgba({_RM_ORANGE}, 0.28);
   padding: 2px 6px;
 }}
 QMenuBar::item {{
@@ -34,12 +31,12 @@ QMenuBar::item {{
   border-radius: 4px;
 }}
 QMenuBar::item:selected {{
-  background: rgba(61, 157, 106, 0.28);
+  background: rgba({_RM_ORANGE}, 0.28);
 }}
 QMenu {{
-  background: {META_BG};
-  color: {TEXT_STRONG};
-  border: 1px solid rgba(61, 157, 106, 0.35);
+  background: {_RM_META};
+  color: {_RM_STRONG};
+  border: 1px solid rgba({_RM_ORANGE}, 0.4);
   padding: 4px;
 }}
 QMenu::item {{
@@ -47,27 +44,27 @@ QMenu::item {{
   border-radius: 4px;
 }}
 QMenu::item:selected {{
-  background: rgba(61, 157, 106, 0.22);
+  background: rgba({_RM_ORANGE}, 0.22);
 }}
 QPlainTextEdit#mdEditor {{
-  background: {EDITOR_BG};
-  color: {TEXT};
+  background: {_RM_EDITOR};
+  color: {_RM_TEXT};
   border: none;
   padding: 10px 12px;
-  selection-background-color: rgba(61, 157, 106, 0.35);
-  selection-color: {TEXT_STRONG};
+  selection-background-color: rgba({_RM_ORANGE}, 0.35);
+  selection-color: {_RM_STRONG};
 }}
 QTextBrowser#mdPreview {{
-  background: {META_BG};
-  color: #d5dde6;
+  background: {_RM_META};
+  color: #e8e4df;
   border: none;
   outline: none;
-  border-left: 1px solid rgba(61, 157, 106, 0.16);
+  border-left: 1px solid rgba({_RM_ORANGE}, 0.2);
   padding: 12px 14px;
 }}
 QToolBar#formatBar {{
-  background: {TOOLBAR_BG};
-  color: {TOOLBAR_FG};
+  background: {_RM_BAR};
+  color: {_RM_BAR_FG};
   border: none;
   spacing: 2px;
   padding: 0 6px;
@@ -75,7 +72,7 @@ QToolBar#formatBar {{
 }}
 QToolBar#formatBar QToolButton {{
   background: transparent;
-  color: {TOOLBAR_FG};
+  color: {_RM_BAR_FG};
   border: none;
   border-radius: 3px;
   min-width: 32px;
@@ -86,19 +83,19 @@ QToolBar#formatBar QToolButton {{
 QToolBar#formatBar QToolButton:hover,
 QToolBar#formatBar QToolButton:pressed,
 QToolBar#formatBar QToolButton:checked {{
-  background: rgba(0, 0, 0, 0.18);
+  background: rgba(0, 0, 0, 0.22);
 }}
 QToolBar#formatBar QToolButton::menu-indicator {{
   image: none;
   width: 0;
 }}
 QWidget#insertRail {{
-  background: {RAIL_BG};
-  border-right: 1px solid rgba(61, 157, 106, 0.16);
+  background-color: #2a2a2c;
+  border: none;
 }}
 QWidget#insertRail QToolButton {{
   background: transparent;
-  color: #b7c4cf;
+  color: #f2f2f3;
   border: none;
   border-radius: 4px;
   min-width: 34px;
@@ -106,29 +103,29 @@ QWidget#insertRail QToolButton {{
   font-size: 13px;
 }}
 QWidget#insertRail QToolButton:hover {{
-  background: rgba(61, 157, 106, 0.18);
-  color: {TEXT_STRONG};
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
 }}
 QWidget#outlineRail {{
-  background: {RAIL_BG};
-  border-left: 1px solid rgba(61, 157, 106, 0.16);
+  background: {_RM_RAIL};
+  border-left: 1px solid rgba({_RM_ORANGE}, 0.2);
 }}
 QLabel#outlineTitle {{
-  color: {TEXT_STRONG};
+  color: #ffb347;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.8px;
   padding: 10px 12px 6px;
 }}
 QLabel#outlineEmpty {{
-  color: {STATUS_FG};
+  color: {_RM_STATUS_FG};
   font-size: 12px;
   padding: 4px 12px 12px;
 }}
 QListWidget#outlineList {{
   background: transparent;
   border: none;
-  color: {TEXT};
+  color: {_RM_TEXT};
   outline: none;
   padding: 2px 6px 8px;
 }}
@@ -137,23 +134,24 @@ QListWidget#outlineList::item {{
   border-radius: 4px;
 }}
 QListWidget#outlineList::item:hover {{
-  background: rgba(61, 157, 106, 0.18);
+  background: rgba({_RM_ORANGE}, 0.18);
 }}
 QListWidget#outlineList::item:selected {{
-  background: rgba(61, 157, 106, 0.28);
-  color: {TEXT_STRONG};
+  background: rgba({_RM_ORANGE}, 0.3);
+  color: {_RM_STRONG};
 }}
 QWidget#statusBar {{
-  background: {STATUS_BG};
-  color: {STATUS_FG};
+  background-color: #111111;
+  color: #ffffff;
+  border: none;
 }}
 QWidget#statusBar QLabel {{
-  color: {STATUS_FG};
+  color: #ffffff;
   font-size: 11px;
   letter-spacing: 0.3px;
 }}
 QSplitter::handle {{
-  background: rgba(61, 157, 106, 0.16);
+  background: rgba({_RM_ORANGE}, 0.22);
   width: 1px;
 }}
 QScrollBar:vertical {{
@@ -162,7 +160,7 @@ QScrollBar:vertical {{
   margin: 0;
 }}
 QScrollBar::handle:vertical {{
-  background: rgba(61, 157, 106, 0.35);
+  background: rgba({_RM_ORANGE}, 0.4);
   min-height: 24px;
   border-radius: 4px;
 }}
@@ -171,129 +169,171 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
 }}
 """
 
-LIGHT_QSS = """
-QMainWindow, QWidget#workspace {
-  background: #f4f6f5;
-  color: #222222;
-}
-QMenuBar {
-  background: #eef2ef;
-  color: #1a1f26;
-  border-bottom: 1px solid rgba(61, 157, 106, 0.25);
-}
-QMenuBar::item:selected {
-  background: rgba(61, 157, 106, 0.18);
-}
-QMenu {
-  background: #ffffff;
-  color: #1a1f26;
-  border: 1px solid rgba(61, 157, 106, 0.3);
-}
-QMenu::item:selected {
-  background: rgba(61, 157, 106, 0.18);
-}
-QPlainTextEdit#mdEditor {
-  background: #ffffff;
-  color: #222222;
+# Claro: branco no fundo, preto nos títulos, laranja só como acento.
+_RML_PAGE = "#f2f2f3"
+_RML_META = "#ffffff"
+_RML_EDITOR = "#ffffff"
+_RML_RAIL = "#efeff0"
+_RML_BAR = "#111111"
+_RML_BAR_FG = "#ffffff"
+_RML_TEXT = "#1a1a1a"
+_RML_MUTED = "#6e6e6e"
+_RML_ORANGE = "232, 93, 4"
+
+LIGHT_QSS = f"""
+QMainWindow, QWidget#workspace {{
+  background: {_RML_PAGE};
+  color: {_RML_TEXT};
+}}
+QMenuBar {{
+  background: {_RML_META};
+  color: {_RML_TEXT};
+  border-bottom: 1px solid #e4e4e6;
+  padding: 2px 6px;
+}}
+QMenuBar::item {{
+  padding: 4px 10px;
+  border-radius: 4px;
+}}
+QMenuBar::item:selected {{
+  background: rgba({_RML_ORANGE}, 0.16);
+}}
+QMenu {{
+  background: {_RML_META};
+  color: {_RML_TEXT};
+  border: 1px solid #e4e4e6;
+  padding: 4px;
+}}
+QMenu::item {{
+  padding: 6px 18px;
+  border-radius: 4px;
+}}
+QMenu::item:selected {{
+  background: rgba({_RML_ORANGE}, 0.16);
+}}
+QPlainTextEdit#mdEditor {{
+  background: {_RML_EDITOR};
+  color: {_RML_TEXT};
   border: none;
   padding: 10px 12px;
-  selection-background-color: rgba(61, 157, 106, 0.28);
-}
-QTextBrowser#mdPreview {
-  background: #f7f9f8;
-  color: #222222;
+  selection-background-color: rgba({_RML_ORANGE}, 0.22);
+  selection-color: {_RML_TEXT};
+}}
+QTextBrowser#mdPreview {{
+  background: {_RML_META};
+  color: {_RML_TEXT};
   border: none;
   outline: none;
-  border-left: 1px solid rgba(61, 157, 106, 0.2);
+  border-left: 1px solid #e4e4e6;
   padding: 12px 14px;
-}
-QToolBar#formatBar {
-  background: #2f8a58;
-  color: #f4fff8;
+}}
+QToolBar#formatBar {{
+  background: {_RML_BAR};
+  color: {_RML_BAR_FG};
   border: none;
   spacing: 2px;
   padding: 0 6px;
   min-height: 38px;
-}
-QToolBar#formatBar QToolButton {
+}}
+QToolBar#formatBar QToolButton {{
   background: transparent;
-  color: #f4fff8;
+  color: {_RML_BAR_FG};
   border: none;
   border-radius: 3px;
   min-width: 32px;
   min-height: 32px;
   font-weight: 700;
   font-size: 14px;
-}
+}}
 QToolBar#formatBar QToolButton:hover,
 QToolBar#formatBar QToolButton:pressed,
-QToolBar#formatBar QToolButton:checked {
-  background: rgba(0, 0, 0, 0.18);
-}
-QToolBar#formatBar QToolButton::menu-indicator {
+QToolBar#formatBar QToolButton:checked {{
+  background: rgba({_RML_ORANGE}, 0.85);
+  color: {_RML_BAR_FG};
+}}
+QToolBar#formatBar QToolButton::menu-indicator {{
   image: none;
   width: 0;
-}
-QWidget#insertRail {
-  background: #e8eeea;
-  border-right: 1px solid rgba(61, 157, 106, 0.2);
-}
-QWidget#insertRail QToolButton {
+}}
+QWidget#insertRail {{
+  background-color: #e85d04;
+  border: none;
+}}
+QWidget#insertRail QToolButton {{
   background: transparent;
-  color: #3a4a42;
+  color: #fff8f0;
   border: none;
   border-radius: 4px;
   min-width: 34px;
   min-height: 34px;
-}
-QWidget#insertRail QToolButton:hover {
-  background: rgba(61, 157, 106, 0.18);
-}
-QWidget#outlineRail {
-  background: #e8eeea;
-  border-left: 1px solid rgba(61, 157, 106, 0.2);
-}
-QLabel#outlineTitle {
-  color: #1a1f26;
+  font-size: 13px;
+}}
+QWidget#insertRail QToolButton:hover {{
+  background: rgba(0, 0, 0, 0.18);
+  color: #ffffff;
+}}
+QWidget#outlineRail {{
+  background: #2a2a2c;
+  border-left: none;
+}}
+QLabel#outlineTitle {{
+  background: #2a2a2c;
+  color: #f2f2f3;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.8px;
-  padding: 10px 12px 6px;
-}
-QLabel#outlineEmpty {
-  color: #5a6a62;
+  padding: 10px 12px;
+}}
+QLabel#outlineEmpty {{
+  color: #9a9a9e;
   font-size: 12px;
   padding: 4px 12px 12px;
-}
-QListWidget#outlineList {
-  background: transparent;
+}}
+QListWidget#outlineList {{
+  background: #2a2a2c;
   border: none;
-  color: #222222;
+  color: #f2f2f3;
   outline: none;
   padding: 2px 6px 8px;
-}
-QListWidget#outlineList::item {
+}}
+QListWidget#outlineList::item {{
   padding: 5px 8px;
   border-radius: 4px;
-}
-QListWidget#outlineList::item:hover {
-  background: rgba(61, 157, 106, 0.18);
-}
-QListWidget#outlineList::item:selected {
-  background: rgba(61, 157, 106, 0.28);
-  color: #1a1f26;
-}
-QWidget#statusBar {
-  background: #e4eae6;
-}
-QWidget#statusBar QLabel {
-  color: #5a6a62;
+}}
+QListWidget#outlineList::item:hover {{
+  background: rgba(255, 255, 255, 0.08);
+}}
+QListWidget#outlineList::item:selected {{
+  background: #e85d04;
+  color: #ffffff;
+}}
+QWidget#statusBar {{
+  background-color: #111111;
+  color: #ffffff;
+  border: none;
+}}
+QWidget#statusBar QLabel {{
+  color: #ffffff;
   font-size: 11px;
-}
-QSplitter::handle {
-  background: rgba(61, 157, 106, 0.2);
+  letter-spacing: 0.3px;
+}}
+QSplitter::handle {{
+  background: #e4e4e6;
   width: 1px;
-}
+}}
+QScrollBar:vertical {{
+  background: #e8e8ea;
+  width: 10px;
+  margin: 0;
+}}
+QScrollBar::handle:vertical {{
+  background: #b4b4b8;
+  min-height: 24px;
+  border-radius: 4px;
+}}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+  height: 0;
+}}
 """
 
 
@@ -302,4 +342,4 @@ def configure_app(app: QApplication) -> None:
 
 
 def apply_theme(widget: QWidget, theme: str) -> None:
-    widget.setStyleSheet(DARK_QSS if theme == "dark" else LIGHT_QSS)
+    widget.setStyleSheet(LIGHT_QSS if theme == "light" else DARK_QSS)

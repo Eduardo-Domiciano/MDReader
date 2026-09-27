@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import re
 import secrets
+from pathlib import Path
 from typing import Protocol
 from urllib.parse import quote, unquote
 
@@ -12,8 +13,9 @@ from pygments import highlight
 from pygments.formatters import HtmlFormatter
 from pygments.lexers import get_lexer_by_name, guess_lexer
 from pygments.util import ClassNotFound
-from PySide6.QtCore import QRectF, Qt, QUrl, QUrlQuery, Signal
+from PySide6.QtCore import QRectF, Qt, QTimer, QUrl, QUrlQuery, Signal
 from PySide6.QtGui import (
+    QBrush,
     QColor,
     QDesktopServices,
     QFont,
@@ -26,6 +28,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QApplication, QTextBrowser, QWidget
 
 from app.callouts import apply_blockquote_callouts
+from app.images import apply_image_sizes, normalize_wiki_images, resolve_local_image_srcs
 
 _PRE_SPLIT_RE = re.compile(r"(<pre\b[^>]*>[\s\S]*?</pre>)", re.IGNORECASE)
 _HEADING_HTML_RE = re.compile(r"<h([1-6])>([\s\S]*?)</h\1>", re.IGNORECASE)
@@ -42,9 +45,9 @@ _INLINE_CODE_STYLE = (
     "font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;"
     "font-size:0.84em;font-weight:650;"
 )
-_CMD_TEXT = QColor("#0f1419")
-_CMD_FILL = QColor("#3d9d6a")
-_CMD_BORDER = QColor("#000000")
+_CMD_TEXT = QColor("#ffe8d2")
+_CMD_FILL = QColor("#000000")
+_CMD_BORDER = QColor("#e85d04")
 
 ALLOWED_TAGS = [
     "a",
@@ -82,20 +85,32 @@ ALLOWED_TAGS = [
 ]
 
 ALLOWED_ATTRIBUTES = {
-    "a": ["href", "title"],
-    "img": ["src", "alt", "title"],
-    "td": ["align"],
-    "th": ["align"],
-    "code": ["class"],
-    "div": ["class"],
-    "span": ["class"],
-    "pre": ["class"],
-    "blockquote": ["class"],
+    "a": ["href", "title", "name", "id"],
+    "img": ["src", "alt", "title", "width", "height"],
+    "td": ["align", "id"],
+    "th": ["align", "id"],
+    "code": ["class", "id"],
+    "div": ["class", "id"],
+    "span": ["class", "id"],
+    "pre": ["class", "id"],
+    "blockquote": ["class", "id"],
+    "p": ["id"],
+    "h1": ["id"],
+    "h2": ["id"],
+    "h3": ["id"],
+    "h4": ["id"],
+    "h5": ["id"],
+    "h6": ["id"],
+    "ul": ["id"],
+    "ol": ["id"],
+    "li": ["id"],
+    "table": ["id", "class"],
+    "hr": ["id"],
 }
 
 
 def _formatter(theme: str) -> HtmlFormatter:
-    style = "native" if theme == "dark" else "default"
+    style = "default" if theme == "light" else "native"
     return HtmlFormatter(nowrap=True, cssclass="highlight", style=style)
 
 
@@ -107,11 +122,25 @@ def _highlight_code(code: str, language: str, _attrs: str) -> str:
     return highlight(code, lexer, _formatter("dark"))
 
 
+def _source_line_ids(md: MarkdownIt) -> None:
+    def add_ids(state) -> None:
+        skip = {"tbody_open", "thead_open", "tr_open", "td_open", "th_open"}
+        for token in state.tokens:
+            if token.map is None or token.type in skip:
+                continue
+            if token.nesting != 1 and token.type not in {"fence", "hr", "code_block"}:
+                continue
+            token.attrSet("id", f"src-{token.map[0]}")
+
+    md.core.ruler.push("source_line_ids", add_ids)
+
+
 _MD = (
     MarkdownIt("commonmark", {"html": False, "highlight": _highlight_code})
     .enable("strikethrough")
     .enable("table")
 )
+_source_line_ids(_MD)
 
 
 class PreviewSurface(Protocol):
@@ -119,9 +148,18 @@ class PreviewSurface(Protocol):
 
     def widget(self) -> QWidget: ...
 
-    def set_html(self, document: str, base_url: QUrl | None = None) -> None: ...
+    def set_html(
+        self,
+        document: str,
+        base_url: QUrl | None = None,
+        *,
+        keep_scroll: bool = True,
+        theme: str = "dark",
+    ) -> None: ...
 
     def scroll_to_heading(self, index: int) -> None: ...
+
+    def scroll_to_source_line(self, line: int) -> None: ...
 
 
 class CopyCodeBrowser(QTextBrowser):
@@ -134,8 +172,40 @@ class CopyCodeBrowser(QTextBrowser):
         self.setOpenLinks(False)
         self.setReadOnly(True)
         self.setCursorWidth(0)
-        self.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse)
+        self.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+            | Qt.TextInteractionFlag.LinksAccessibleByMouse
+        )
         self.anchorClicked.connect(self._on_anchor)
+        self._cmd_text = _CMD_TEXT
+        self._cmd_fill = _CMD_FILL
+        self._cmd_border = _CMD_BORDER
+
+    def set_command_colors(self, theme: str) -> None:
+        self._cmd_text = _CMD_TEXT
+        self._cmd_fill = _CMD_FILL
+        self._cmd_border = _CMD_BORDER
+
+    def flatten_command_formats(self) -> None:
+        cursor = self.textCursor()
+        ranges: list[tuple[int, int]] = []
+        block = self.document().begin()
+        while block.isValid():
+            it = block.begin()
+            while not it.atEnd():
+                fragment = it.fragment()
+                if fragment.charFormat().anchorHref().startswith("mdcopy:"):
+                    ranges.append((fragment.position(), fragment.position() + fragment.length()))
+                it += 1
+            block = block.next()
+        for start, end in ranges:
+            cursor.setPosition(start)
+            cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+            fmt = cursor.charFormat()
+            fmt.setBackground(QBrush(Qt.BrushStyle.NoBrush))
+            fmt.setForeground(QColor(0, 0, 0, 0))
+            cursor.setCharFormat(fmt)
 
     def _on_anchor(self, url: QUrl) -> None:
         if url.scheme() in {"mdcopy", "mdblock"}:
@@ -151,11 +221,13 @@ class CopyCodeBrowser(QTextBrowser):
             QDesktopServices.openUrl(url)
 
     def _clear_caret(self) -> None:
+        bar = self.verticalScrollBar()
+        saved = bar.value()
         cursor = self.textCursor()
         cursor.clearSelection()
-        cursor.movePosition(QTextCursor.MoveOperation.Start)
         self.setTextCursor(cursor)
         self.setExtraSelections([])
+        bar.setValue(saved)
 
     def paintEvent(self, event: QPaintEvent) -> None:
         super().paintEvent(event)
@@ -163,10 +235,14 @@ class CopyCodeBrowser(QTextBrowser):
         try:
             painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
             for box, text_rect, text, font in self._command_chips():
-                painter.setPen(QPen(_CMD_BORDER, 2))
-                painter.setBrush(_CMD_FILL)
-                painter.drawRect(box.toRect())
-                painter.setPen(_CMD_TEXT)
+                rect = box.toRect()
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(self._cmd_fill)
+                painter.drawRect(rect)
+                painter.setPen(QPen(self._cmd_border, 2))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawRect(rect.adjusted(1, 1, -1, -1))
+                painter.setPen(self._cmd_text)
                 painter.setFont(font)
                 painter.drawText(text_rect.toRect(), int(Qt.AlignmentFlag.AlignCenter), text)
         finally:
@@ -204,10 +280,21 @@ class CopyCodeBrowser(QTextBrowser):
                         extra = needed_h - text_rect.height()
                         text_rect.adjust(0, -extra / 2, 0, extra / 2)
                     box = text_rect.adjusted(-3, -2, 3, 2)
-                    chips.append((box, text_rect, label, fmt.font()))
+                    href = fmt.anchorHref()
+                    if chips and chips[-1][4] == href and chips[-1][0].intersects(box.adjusted(-2, -2, 2, 2)):
+                        prev_box, prev_text, prev_label, prev_font, _href = chips[-1]
+                        chips[-1] = (
+                            prev_box.united(box),
+                            prev_text.united(text_rect),
+                            prev_label + label,
+                            prev_font,
+                            href,
+                        )
+                    else:
+                        chips.append((box, text_rect, label, fmt.font(), href))
                 it += 1
             block = block.next()
-        return chips
+        return [(box, text_rect, text, font) for box, text_rect, text, font, _href in chips]
 
 
 class TextBrowserPreview:
@@ -243,16 +330,83 @@ class TextBrowserPreview:
         if target is None:
             view.scrollToAnchor(name)
             return
-        top = int(doc.documentLayout().blockBoundingRect(target).top())
-        bar = view.verticalScrollBar()
-        bar.setValue(min(max(top - 8, bar.minimum()), bar.maximum()))
+        self._scroll_block_into_view(target)
 
-    def set_html(self, document: str, base_url: QUrl | None = None) -> None:
+    def scroll_to_source_line(self, line: int) -> None:
+        view = self._view
+        doc = view.document()
+        best_line = -1
+        next_line: int | None = None
+        target = None
+        block = doc.begin()
+        while block.isValid():
+            names: list[str] = []
+            it = block.begin()
+            while not it.atEnd():
+                names.extend(it.fragment().charFormat().anchorNames())
+                it += 1
+            for name in names:
+                if not name.startswith("src-"):
+                    continue
+                try:
+                    number = int(name[4:])
+                except ValueError:
+                    continue
+                if number <= line and number >= best_line:
+                    best_line = number
+                    target = block
+                elif number > line and (next_line is None or number < next_line):
+                    next_line = number
+            block = block.next()
+        if target is None:
+            return
+        span = max((next_line - best_line) if next_line is not None else 1, 1)
+        frac = 0.0 if span <= 1 else min(max((line - best_line) / span, 0.0), 1.0)
+        rect = doc.documentLayout().blockBoundingRect(target)
+        y = int(rect.top() + frac * max(rect.height() - 8, 0))
+        self._scroll_y_into_view(y)
+
+    def _scroll_block_into_view(self, block) -> None:
+        top = int(self._view.document().documentLayout().blockBoundingRect(block).top())
+        self._scroll_y_into_view(top)
+
+    def _scroll_y_into_view(self, y: int) -> None:
+        view = self._view
+        bar = view.verticalScrollBar()
+        viewport = view.viewport().height()
+        top = bar.value()
+        bottom = top + viewport
+        if top + 16 <= y <= bottom - 40:
+            return
+        desired = y - max(viewport // 4, 16)
+        bar.setValue(min(max(desired, bar.minimum()), bar.maximum()))
+
+    def set_html(
+        self,
+        document: str,
+        base_url: QUrl | None = None,
+        *,
+        keep_scroll: bool = True,
+        theme: str = "dark",
+    ) -> None:
+        view = self._view
+        view.set_command_colors(theme)
+        vbar = view.verticalScrollBar()
+        hbar = view.horizontalScrollBar()
+        saved = (vbar.value(), hbar.value()) if keep_scroll else (0, 0)
         if base_url is not None and base_url.isLocalFile():
-            self._view.setSearchPaths([base_url.toLocalFile()])
+            view.setSearchPaths([base_url.toLocalFile()])
         else:
-            self._view.setSearchPaths([])
-        self._view.setHtml(document)
+            view.setSearchPaths([])
+        view.setHtml(document)
+        view.flatten_command_formats()
+
+        def restore() -> None:
+            vbar.setValue(min(saved[0], vbar.maximum()))
+            hbar.setValue(min(saved[1], hbar.maximum()))
+
+        restore()
+        QTimer.singleShot(0, restore)
 
 
 def create_preview(parent: QWidget | None = None) -> PreviewSurface:
@@ -313,7 +467,7 @@ def _replace_outer_pre(body: str, replace) -> str:
     return "".join(out)
 
 
-def wrap_fenced_code_blocks(body: str) -> str:
+def wrap_fenced_code_blocks(body: str, accent: str = "#e85d04") -> str:
     """Envolve ```código``` numa caixa com botão Copiar no topo direito."""
 
     def wrap_chunk(chunk: str) -> str:
@@ -323,10 +477,13 @@ def wrap_fenced_code_blocks(body: str) -> str:
         href = f"mdblock:?id={key}"
         copy = f'<a href="{href}" class="md-codeblock__copy" style="{_COPY_BTN_STYLE}">Copiar</a>'
         body_html = _pre_inner_html(chunk)
+        src = re.search(r'\sid="(src-\d+)"', chunk)
+        anchor = f'<a name="{src.group(1)}"></a>' if src else ""
         return (
-            '<table class="md-codeblock" width="100%" border="1" bordercolor="#3d9d6a" '
+            f"{anchor}"
+            f'<table class="md-codeblock" width="100%" border="1" bordercolor="{accent}" '
             'cellspacing="0" cellpadding="8" bgcolor="#000000" '
-            'style="background-color:#000000;margin:12px 0;border:2px solid #3d9d6a;">'
+            f'style="background-color:#000000;margin:12px 0;border:2px solid {accent};">'
             "<tr>"
             '<td bgcolor="#000000" style="background-color:#000000;color:#9aa3ad;'
             'padding:8px 10px;font-size:12px;font-weight:650;">Código</td>'
@@ -363,17 +520,20 @@ def linkify_inline_code(body: str) -> str:
     return "".join(parts)
 
 
-def markdown_to_body(source: str) -> str:
+def markdown_to_body(source: str, theme: str = "dark") -> str:
     _COPY_PAYLOADS.clear()
+    normalized, sizes = normalize_wiki_images(source)
     cleaned = bleach.clean(
-        _MD.render(source),
+        _MD.render(normalized),
         tags=ALLOWED_TAGS,
         attributes=ALLOWED_ATTRIBUTES,
-        protocols=["http", "https", "mailto"],
+        protocols=["http", "https", "mailto", "file"],
         strip=True,
     )
+    cleaned = apply_image_sizes(cleaned, sizes)
+    accent = "#e85d04"
     return inject_heading_anchors(
-        linkify_inline_code(wrap_fenced_code_blocks(apply_blockquote_callouts(cleaned)))
+        linkify_inline_code(wrap_fenced_code_blocks(apply_blockquote_callouts(cleaned, theme), accent))
     )
 
 
@@ -392,18 +552,26 @@ def inject_heading_anchors(body: str) -> str:
 
 
 def wrap_preview_html(body: str, theme: str = "dark") -> str:
-    dark = theme == "dark"
-    bg = "#1a1f26" if dark else "#f7f9f8"
-    fg = "#d5dde6" if dark else "#2a3036"
-    heading = "#e8ecf0" if dark else "#14191f"
-    muted = "#c5d0db" if dark else "#4a5560"
-    link = "#7dcea0" if dark else "#2f8a58"
-    link_hover = "#a8e0c0" if dark else "#3d9d6a"
-    code_bg = "#07090c" if dark else "#eef2ef"
-    code_fg = "#d7efe0" if dark else "#14191f"
-    border = "rgba(61, 157, 106, 0.28)"
-    quote_bg = "rgba(0, 0, 0, 0.2)" if dark else "rgba(61, 157, 106, 0.08)"
-    th_bg = "rgba(61, 157, 106, 0.12)"
+    if theme == "light":
+        bg, fg, heading, muted = "#ffffff", "#1a1a1a", "#111111", "#6e6e6e"
+        link, link_hover = "#e85d04", "#ff8a3d"
+        code_bg, code_fg = "#111111", "#f5f5f5"
+        border = "rgba(17, 17, 17, 0.12)"
+        quote_bg = "rgba(232, 93, 4, 0.06)"
+        th_bg = "rgba(232, 93, 4, 0.08)"
+        heading_rule = "rgba(17, 17, 17, 0.18)"
+        quote_border = "rgba(232, 93, 4, 0.85)"
+        accent = "#e85d04"
+    else:
+        bg, fg, heading, muted = "#161412", "#e8e4df", "#fff6ee", "#b8ada3"
+        link, link_hover = "#ff8a3d", "#ffc14d"
+        code_bg, code_fg = "#070605", "#ffe8d2"
+        border = "rgba(255, 106, 26, 0.35)"
+        quote_bg = "rgba(255, 106, 26, 0.08)"
+        th_bg = "rgba(255, 106, 26, 0.12)"
+        heading_rule = "rgba(255, 106, 26, 0.45)"
+        quote_border = "rgba(255, 106, 26, 0.65)"
+        accent = "#e85d04"
     pygments_css = _formatter(theme).get_style_defs(".highlight")
 
     return f"""<!DOCTYPE html>
@@ -432,7 +600,7 @@ def wrap_preview_html(body: str, theme: str = "dark") -> str:
   h1 {{
     font-size: 1.35rem;
     padding-bottom: 0.35em;
-    border-bottom: 1px solid rgba(61, 157, 106, 0.35);
+    border-bottom: 1px solid {heading_rule};
   }}
   h2 {{
     font-size: 1.15rem;
@@ -453,7 +621,7 @@ def wrap_preview_html(body: str, theme: str = "dark") -> str:
   blockquote {{
     margin: 0.75em 0;
     padding: 0.55rem 0.85rem;
-    border-left: 3px solid rgba(61, 157, 106, 0.55);
+    border-left: 3px solid {quote_border};
     color: {muted};
     background: {quote_bg};
     border-radius: 0 0.3rem 0.3rem 0;
@@ -515,7 +683,7 @@ def wrap_preview_html(body: str, theme: str = "dark") -> str:
     font-size: 0.82rem;
   }}
   table.md-codeblock {{
-    border: 2px solid #3d9d6a;
+    border: 2px solid {accent};
     border-radius: 0;
     background: #000000;
     margin: 0.75em 0;
@@ -546,7 +714,7 @@ def wrap_preview_html(body: str, theme: str = "dark") -> str:
     border: none;
   }}
   th {{ background: {th_bg}; font-weight: 650; }}
-  img {{ max-width: 100%; height: auto; border-radius: 0.35rem; }}
+  img {{ max-width: 100%; border-radius: 0.35rem; }}
   strong {{ font-weight: 650; color: {heading}; }}
   {pygments_css}
 </style>
@@ -558,5 +726,6 @@ def wrap_preview_html(body: str, theme: str = "dark") -> str:
 """
 
 
-def render_preview(source: str, theme: str = "dark") -> str:
-    return wrap_preview_html(markdown_to_body(source), theme)
+def render_preview(source: str, theme: str = "dark", base_dir: Path | None = None) -> str:
+    body = resolve_local_image_srcs(markdown_to_body(source, theme), base_dir)
+    return wrap_preview_html(body, theme)
