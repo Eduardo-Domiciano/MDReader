@@ -18,6 +18,8 @@ pyinstaller \
   --noconfirm \
   --windowed \
   --name MDReader \
+  --icon app/icon.png \
+  --add-data "app/icon.png:app" \
   --collect-all PySide6_Essentials \
   app/__main__.py
 

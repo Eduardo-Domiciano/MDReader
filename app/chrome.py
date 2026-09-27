@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPixmap
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QIcon, QMouseEvent, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -16,6 +16,94 @@ from PySide6.QtWidgets import (
 
 from app.callouts import CALLOUT_DOTS, CALLOUT_KINDS, CALLOUT_LABELS, callout_fence
 from app.editor import MarkdownEditor
+from app.icon import app_icon
+
+
+class TitleBar(QWidget):
+    def __init__(self, window: QWidget) -> None:
+        super().__init__(window)
+        self._window = window
+        self._drag: QPoint | None = None
+        self.setObjectName("titleBar")
+        self.setFixedHeight(36)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+
+        self._icon = QLabel()
+        self._icon.setFixedSize(22, 22)
+        self._icon.setPixmap(app_icon().pixmap(20, 20))
+
+        self._title = QLabel("MDReader")
+        self._title.setObjectName("titleCaption")
+
+        self._min = QToolButton()
+        self._min.setObjectName("titleMin")
+        self._min.setText("–")
+        self._min.setToolTip("Minimizar")
+        self._min.clicked.connect(window.showMinimized)
+
+        self._max = QToolButton()
+        self._max.setObjectName("titleMax")
+        self._max.setText("□")
+        self._max.setToolTip("Maximizar")
+        self._max.clicked.connect(self._toggle_max)
+
+        self._close = QToolButton()
+        self._close.setObjectName("titleClose")
+        self._close.setText("×")
+        self._close.setToolTip("Fechar")
+        self._close.clicked.connect(window.close)
+
+        for btn in (self._min, self._max, self._close):
+            btn.setAutoRaise(True)
+            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            btn.setFixedSize(36, 28)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 0, 4, 0)
+        layout.setSpacing(8)
+        layout.addWidget(self._icon)
+        layout.addWidget(self._title, 1)
+        layout.addWidget(self._min)
+        layout.addWidget(self._max)
+        layout.addWidget(self._close)
+
+    def set_title(self, text: str) -> None:
+        self._title.setText(text)
+
+    def _toggle_max(self) -> None:
+        if self._window.isMaximized():
+            self._window.showNormal()
+        else:
+            self._window.showMaximized()
+        self.sync_max_button()
+
+    def sync_max_button(self) -> None:
+        maximized = self._window.isMaximized()
+        self._max.setText("❐" if maximized else "□")
+        self._max.setToolTip("Restaurar" if maximized else "Maximizar")
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            handle = self._window.windowHandle()
+            if handle is not None:
+                handle.startSystemMove()
+            else:
+                self._drag = event.globalPosition().toPoint() - self._window.frameGeometry().topLeft()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        if self._drag is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            self._window.move(event.globalPosition().toPoint() - self._drag)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        self._drag = None
+        super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._toggle_max()
+        super().mouseDoubleClickEvent(event)
 
 
 def _dot_icon(color: str) -> QIcon:

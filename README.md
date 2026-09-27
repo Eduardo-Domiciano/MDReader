@@ -41,17 +41,17 @@ O binário fica em `dist/MDReader/MDReader`. O `.deb` e os instaladores de outro
 
 Ao escolher uma imagem na barra esquerda ou arrastá-la para o editor, o MDReader **copia o arquivo** — não usa só o caminho original.
 
-- A cópia vai para a pasta **`imagens/`** ao lado do executável. No desenvolvimento (`python -m app`), isso é a raiz do projeto.
-- No Markdown entra um caminho relativo, por exemplo `imagens/foto.png`.
+- A cópia vai para a pasta **`img/`** ao lado do executável. No desenvolvimento (`python -m app`), isso é a raiz do projeto.
+- No Markdown entra um caminho relativo, por exemplo `img/foto.png`.
 - Se o nome já existir, grava `foto-2.png`, `foto-3.png`, e assim por diante.
-- A pasta é criada na primeira inserção. Com o app empacotado, `imagens/` fica ao lado de `dist/MDReader/MDReader`.
+- A pasta é criada na primeira inserção. Com o app empacotado, `img/` fica ao lado de `dist/MDReader/MDReader`.
 
 Sintaxe no texto (tamanhos no estilo Wiki.js):
 
 ```markdown
-![legenda](imagens/foto.png)
-![legenda](imagens/foto.png =240x)
-![legenda](imagens/foto.png =100%x)
+![legenda](img/foto.png)
+![legenda](img/foto.png =240x)
+![legenda](img/foto.png =100%x)
 ```
 
 ## Como funciona
@@ -85,7 +85,7 @@ O preview atualiza enquanto você digita e rola até o bloco correspondente à l
 | Botão | Função | Markdown |
 | --- | --- | --- |
 | `[]` | Ligação | `[texto](https://)` |
-| Imagem | Escolher arquivo e inserir | `![legenda](imagens/foto.png)` |
+| Imagem | Escolher arquivo e inserir | `![legenda](img/foto.png)` |
 | `` `x` `` | Comando inline | `` `comando` `` |
 | `{ }` | Bloco de código | cerca de três crases |
 | **(R)** | Recarregar o arquivo do disco | — |

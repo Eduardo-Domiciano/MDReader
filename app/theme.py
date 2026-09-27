@@ -16,9 +16,38 @@ _RM_BAR_FG = "#fff8f0"
 _RM_ORANGE = "255, 106, 26"
 
 DARK_QSS = f"""
-QMainWindow, QWidget#workspace {{
+QMainWindow {{
   background: {_RM_PAGE};
   color: {_RM_TEXT};
+  border: 1px solid rgba({_RM_ORANGE}, 0.4);
+}}
+QWidget#workspace {{
+  background: {_RM_PAGE};
+  color: {_RM_TEXT};
+}}
+QWidget#titleBar {{
+  background: {_RM_META};
+  color: {_RM_STRONG};
+  border-bottom: 1px solid rgba({_RM_ORANGE}, 0.28);
+}}
+QWidget#titleBar QLabel#titleCaption {{
+  color: {_RM_STRONG};
+  font-size: 12px;
+  font-weight: 600;
+}}
+QWidget#titleBar QToolButton {{
+  background: transparent;
+  color: {_RM_STRONG};
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+}}
+QWidget#titleBar QToolButton:hover {{
+  background: rgba({_RM_ORANGE}, 0.28);
+}}
+QWidget#titleBar QToolButton#titleClose:hover {{
+  background: #c0392b;
+  color: #ffffff;
 }}
 QMenuBar {{
   background: {_RM_META};
@@ -181,9 +210,38 @@ _RML_MUTED = "#6e6e6e"
 _RML_ORANGE = "232, 93, 4"
 
 LIGHT_QSS = f"""
-QMainWindow, QWidget#workspace {{
+QMainWindow {{
   background: {_RML_PAGE};
   color: {_RML_TEXT};
+  border: 1px solid #d4d4d6;
+}}
+QWidget#workspace {{
+  background: {_RML_PAGE};
+  color: {_RML_TEXT};
+}}
+QWidget#titleBar {{
+  background: {_RML_META};
+  color: {_RML_TEXT};
+  border-bottom: 1px solid #e4e4e6;
+}}
+QWidget#titleBar QLabel#titleCaption {{
+  color: {_RML_TEXT};
+  font-size: 12px;
+  font-weight: 600;
+}}
+QWidget#titleBar QToolButton {{
+  background: transparent;
+  color: {_RML_TEXT};
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+}}
+QWidget#titleBar QToolButton:hover {{
+  background: rgba({_RML_ORANGE}, 0.16);
+}}
+QWidget#titleBar QToolButton#titleClose:hover {{
+  background: #c0392b;
+  color: #ffffff;
 }}
 QMenuBar {{
   background: {_RML_META};

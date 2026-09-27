@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 import time
 
-from PySide6.QtCore import QFileSystemWatcher, QTimer, Qt, QUrl
-from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut
+from PySide6.QtCore import QEvent, QFileSystemWatcher, QPoint, QTimer, Qt, QUrl
+from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QMouseEvent, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -12,11 +12,13 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QSplitter,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
-from app.chrome import FormatToolbar, InsertRail, StatusBar
+from app.chrome import FormatToolbar, InsertRail, StatusBar, TitleBar
+from app.icon import app_icon
 from app.editor import MarkdownEditor
 from app.images import relative_image_path, store_image
 from app.outline import OutlineRail, extract_headings
@@ -88,8 +90,19 @@ PREVIEW_DEBOUNCE_MS = 200
 
 
 class MainWindow(QMainWindow):
+    _RESIZE_MARGIN = 6
+
     def __init__(self) -> None:
         super().__init__()
+        self.setWindowFlags(
+            Qt.WindowType.Window
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowSystemMenuHint
+            | Qt.WindowType.WindowMinMaxButtonsHint
+            | Qt.WindowType.WindowCloseButtonHint
+        )
+        self.setWindowIcon(app_icon())
+        self.setMouseTracking(True)
         self.resize(1280, 700)
         self._path: Path | None = None
         self._dirty = False
@@ -162,6 +175,16 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence.StandardKey.Italic, self, self._italic)
 
         self._build_menus()
+        self.title_bar = TitleBar(self)
+        header = QWidget()
+        header.setObjectName("titleHeader")
+        header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        header_layout = QVBoxLayout(header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(0)
+        header_layout.addWidget(self.title_bar)
+        header_layout.addWidget(self.menuBar())
+        self.setMenuWidget(header)
         apply_theme(self, self._theme)
         self._set_editor_text(WELCOME_MARKDOWN, dirty=False)
         self._refresh_preview()
@@ -274,7 +297,10 @@ class MainWindow(QMainWindow):
     def _update_title(self) -> None:
         name = self._path.name if self._path else "Sem título"
         mark = "*" if self._dirty else ""
-        self.setWindowTitle(f"{mark}{name} — MDReader")
+        title = f"{mark}{name} — MDReader"
+        self.setWindowTitle(title)
+        if hasattr(self, "title_bar"):
+            self.title_bar.set_title(title)
 
     def _confirm_discard(self) -> bool:
         if not self._dirty:
@@ -429,13 +455,81 @@ class MainWindow(QMainWindow):
         else:
             event.ignore()
 
+    def changeEvent(self, event: QEvent) -> None:
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange and hasattr(self, "title_bar"):
+            self.title_bar.sync_max_button()
+
+    def eventFilter(self, watched, event: QEvent) -> bool:
+        if isinstance(watched, QWidget) and watched.window() is self:
+            if self._handle_frame_mouse(watched, event):
+                return True
+        return super().eventFilter(watched, event)
+
+    def _edges_at(self, pos: QPoint) -> Qt.Edges:
+        rect = self.rect()
+        margin = self._RESIZE_MARGIN
+        edges = Qt.Edges()
+        if pos.x() <= margin:
+            edges |= Qt.Edge.LeftEdge
+        if pos.x() >= rect.width() - margin:
+            edges |= Qt.Edge.RightEdge
+        if pos.y() <= margin:
+            edges |= Qt.Edge.TopEdge
+        if pos.y() >= rect.height() - margin:
+            edges |= Qt.Edge.BottomEdge
+        return edges
+
+    def _handle_frame_mouse(self, watched: QWidget, event: QEvent) -> bool:
+        if self.isMaximized() or not isinstance(event, QMouseEvent):
+            return False
+        if isinstance(watched, QToolButton) and watched.objectName().startswith("title"):
+            return False
+        pos = self.mapFromGlobal(event.globalPosition().toPoint())
+        edges = self._edges_at(pos)
+        if event.type() == QEvent.Type.MouseMove:
+            self._update_resize_cursor(edges)
+            return False
+        if (
+            event.type() == QEvent.Type.MouseButtonPress
+            and event.button() == Qt.MouseButton.LeftButton
+            and edges
+        ):
+            handle = self.windowHandle()
+            if handle is not None:
+                handle.startSystemResize(edges)
+                return True
+        return False
+
+    def _update_resize_cursor(self, edges: Qt.Edges) -> None:
+        if not edges:
+            self.unsetCursor()
+            return
+        left = bool(edges & Qt.Edge.LeftEdge)
+        right = bool(edges & Qt.Edge.RightEdge)
+        top = bool(edges & Qt.Edge.TopEdge)
+        bottom = bool(edges & Qt.Edge.BottomEdge)
+        if (left and top) or (right and bottom):
+            self.setCursor(Qt.CursorShape.SizeFDiagCursor)
+        elif (right and top) or (left and bottom):
+            self.setCursor(Qt.CursorShape.SizeBDiagCursor)
+        elif left or right:
+            self.setCursor(Qt.CursorShape.SizeHorCursor)
+        else:
+            self.setCursor(Qt.CursorShape.SizeVerCursor)
+
 
 def run() -> None:
     import sys
 
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("MDReader")
+    app.setDesktopFileName("mdreader")
+    icon = app_icon()
+    app.setWindowIcon(icon)
     configure_app(app)
     window = MainWindow()
     window.show()
+    window.setWindowIcon(icon)
+    app.installEventFilter(window)
     sys.exit(app.exec())

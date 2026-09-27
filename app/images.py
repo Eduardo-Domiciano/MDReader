@@ -18,7 +18,7 @@ _SIZE_RE = re.compile(r"^=([0-9.]+%?)?x([0-9.]+%?)?$")
 _IMG_TAG_RE = re.compile(r"<img\b([^>]*?)(/?)>", re.IGNORECASE)
 _SRC_RE = re.compile(r'\bsrc="([^"]*)"', re.IGNORECASE)
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"}
-IMAGES_FOLDER = "imagens"
+IMAGES_FOLDER = "img"
 
 
 def is_image_path(path: str | Path) -> bool:

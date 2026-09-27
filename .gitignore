@@ -12,4 +12,5 @@ build/
 .ruff_cache/
 *.md~
 .DS_Store
-imagens/
+img/*
+!img/screenshot.png
