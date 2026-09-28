@@ -4,7 +4,7 @@ Editor Markdown para o desktop. Você escreve à esquerda e vê o resultado rend
 
 ![MDReader](img/screenshot.png)
 
-O preview acompanha o cursor do editor, o índice à direita leva aos títulos de textos longos, e a paleta segue um tema escuro (padrão) ou claro, com laranja como cor de acento.
+O preview acompanha o cursor do editor, a barra de arquivos à esquerda lista os `.md` de uma pasta, o índice à direita leva aos títulos de textos longos, e a paleta segue um tema escuro (padrão) ou claro, com laranja como cor de acento.
 
 ## Rodar no Ubuntu
 
@@ -56,12 +56,13 @@ Sintaxe no texto (tamanhos no estilo Wiki.js):
 
 ## Como funciona
 
-A janela tem quatro áreas:
+A janela tem cinco áreas:
 
-1. **Barra esquerda** — inserção de ligação, imagem, comando inline, bloco de código e recarregar o arquivo **(R)**.
-2. **Editor** — texto Markdown em fonte monoespaçada.
-3. **Preview** — renderização ao vivo. Comandos `` `assim` `` viram chips clicáveis (copiam o texto). Blocos ` ``` ` ganham uma caixa com botão **Copiar**; também dá para selecionar trechos e copiar com Ctrl+C.
-4. **Índice** — lista os títulos do documento. Clique para ir até o título no preview e no editor.
+1. **Arquivos** — barra lateral esquerda (após **Arquivo → Abrir pasta…**). Lista pastas e arquivos `.md`; clique para abrir.
+2. **Barra de inserção** — ligação, imagem, comando inline, bloco de código e recarregar o arquivo **(R)**.
+3. **Editor** — texto Markdown em fonte monoespaçada.
+4. **Preview** — renderização ao vivo. Comandos `` `assim` `` viram chips clicáveis (copiam o texto). Blocos ` ``` ` ganham uma caixa com botão **Copiar**; também dá para selecionar trechos e copiar com Ctrl+C.
+5. **Índice** — lista os títulos do documento. Clique para ir até o título no preview e no editor.
 
 No topo, a barra de formatação (negrito, itálico, rasurado, títulos e avisos). No fim dela há um botão para **ocultar o preview**; o editor passa a ocupar a janela. Embaixo, a barra de status mostra tipo do arquivo e a posição do cursor (Ln, Col).
 
@@ -111,11 +112,12 @@ Os tipos são `{.is-info}`, `{.is-warning}`, `{.is-danger}` e `{.is-record}`.
 | Atalho | Ação |
 | --- | --- |
 | **Ctrl+N** | Novo arquivo |
-| **Ctrl+O** | Abrir |
+| **Ctrl+O** | Abrir arquivo |
+| **Ctrl+Shift+O** | Abrir pasta |
 | **Ctrl+S** | Salvar |
 | **Ctrl+Shift+S** | Salvar como |
 | **Ctrl+B** | Negrito |
 | **Ctrl+I** | Itálico |
 | **Ctrl+Q** | Sair |
 
-Menus **Arquivo** e **Visualizar** (tema escuro / tema claro) cobrem o restante. O app abre no tema escuro.
+Menus **Arquivo** (inclui Fechar pasta) e **Visualizar** (tema escuro / tema claro) cobrem o restante. O app abre no tema escuro.

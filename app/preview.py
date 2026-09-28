@@ -99,7 +99,7 @@ ALLOWED_ATTRIBUTES = {
     "span": ["class", "id"],
     "pre": ["class", "id"],
     "blockquote": ["class", "id"],
-    "p": ["id"],
+    "p": ["id", "class"],
     "h1": ["id"],
     "h2": ["id"],
     "h3": ["id"],
@@ -478,10 +478,14 @@ class TextBrowserPreview:
         view.setHtml(document)
         view.flatten_command_formats()
         _fit_preview_tables(view)
+        _fit_preview_images(view)
+        _tighten_image_blocks(view)
 
         def restore() -> None:
             vbar.setValue(min(saved[0], vbar.maximum()))
             hbar.setValue(min(saved[1], hbar.maximum()))
+            _fit_preview_images(view)
+            _tighten_image_blocks(view)
 
         restore()
         QTimer.singleShot(0, restore)
@@ -642,6 +646,100 @@ def _fit_preview_tables(view: QTextBrowser) -> None:
     walk(view.document().rootFrame())
 
 
+def _fit_preview_images(view: QTextBrowser) -> None:
+    """Ajusta largura/altura das imagens para o viewport — o Qt reserva a altura nativa."""
+    doc = view.document()
+    max_w = max(float(view.viewport().width() - 28), 120.0)
+    cursor = QTextCursor(doc)
+    block = doc.begin()
+    while block.isValid():
+        it = block.begin()
+        while not it.atEnd():
+            fragment = it.fragment()
+            fmt = fragment.charFormat()
+            if fragment.isValid() and fmt.isImageFormat():
+                image = fmt.toImageFormat()
+                width = float(image.width())
+                height = float(image.height())
+                if width <= 0 or height <= 0:
+                    name = image.name()
+                    if name:
+                        size = doc.resource(doc.ResourceType.ImageResource, QUrl(name))
+                        if size is not None and hasattr(size, "width"):
+                            width = float(size.width()) if width <= 0 else width
+                            height = float(size.height()) if height <= 0 else height
+                if width > max_w and width > 0 and height > 0:
+                    scale = max_w / width
+                    image.setWidth(max_w)
+                    image.setHeight(height * scale)
+                    cursor.setPosition(fragment.position())
+                    cursor.setPosition(
+                        fragment.position() + fragment.length(),
+                        QTextCursor.MoveMode.KeepAnchor,
+                    )
+                    cursor.setCharFormat(image)
+                elif width > 0 and height > 0:
+                    # Garante altura explícita para o layout não deixar vão sobrando.
+                    image.setWidth(width)
+                    image.setHeight(height)
+                    cursor.setPosition(fragment.position())
+                    cursor.setPosition(
+                        fragment.position() + fragment.length(),
+                        QTextCursor.MoveMode.KeepAnchor,
+                    )
+                    cursor.setCharFormat(image)
+            it += 1
+        block = block.next()
+
+
+def _tighten_image_blocks(view: QTextBrowser) -> None:
+    """Remove margem extra em parágrafos que só têm imagem."""
+    doc = view.document()
+    block = doc.begin()
+    while block.isValid():
+        only_image = False
+        has_text = False
+        it = block.begin()
+        while not it.atEnd():
+            fragment = it.fragment()
+            if not fragment.isValid():
+                it += 1
+                continue
+            if fragment.charFormat().isImageFormat():
+                only_image = True
+            elif fragment.text().strip():
+                has_text = True
+            it += 1
+        if only_image and not has_text:
+            fmt = block.blockFormat()
+            fmt.setTopMargin(4)
+            fmt.setBottomMargin(4)
+            cursor = QTextCursor(block)
+            cursor.setBlockFormat(fmt)
+        block = block.next()
+
+
+_IMG_ONLY_P_RE = re.compile(
+    r"<p(\b[^>]*)?>\s*(<a\b[^>]*>\s*)?(<img\b[^>]*>)\s*(</a>)?\s*</p>",
+    re.IGNORECASE,
+)
+
+
+def mark_image_paragraphs(body: str) -> str:
+    def replace(match: re.Match[str]) -> str:
+        attrs = match.group(1) or ""
+        before = match.group(2) or ""
+        img = match.group(3)
+        after = match.group(4) or ""
+        if "class=" in attrs:
+            attrs = re.sub(r'class="([^"]*)"', r'class="\1 md-img"', attrs, count=1)
+        else:
+            attrs = f'{attrs} class="md-img"'
+        return f"<p{attrs}>{before}{img}{after}</p>"
+
+    return _IMG_ONLY_P_RE.sub(replace, body)
+
+
 def markdown_to_body(source: str, theme: str = "dark") -> str:
     _COPY_PAYLOADS.clear()
     normalized, sizes = normalize_wiki_images(source)
@@ -652,7 +750,7 @@ def markdown_to_body(source: str, theme: str = "dark") -> str:
         protocols=["http", "https", "mailto", "file"],
         strip=True,
     )
-    cleaned = apply_image_sizes(cleaned, sizes)
+    cleaned = mark_image_paragraphs(apply_image_sizes(cleaned, sizes))
     accent = "#e85d04"
     return inject_heading_anchors(
         linkify_inline_code(wrap_fenced_code_blocks(apply_blockquote_callouts(cleaned, theme), accent))
@@ -841,7 +939,17 @@ def wrap_preview_html(body: str, theme: str = "dark") -> str:
     border: none;
   }}
   th {{ background: {th_bg}; font-weight: 650; }}
-  img {{ max-width: 100%; border-radius: 0.35rem; }}
+  img {{
+    max-width: 100%;
+    height: auto;
+    vertical-align: top;
+    margin: 0.2em 0;
+    border-radius: 0.35rem;
+  }}
+  p.md-img {{
+    margin: 0.25em 0;
+    line-height: 1;
+  }}
   strong {{ font-weight: 650; color: {heading}; }}
   {pygments_css}
 </style>

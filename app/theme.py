@@ -135,6 +135,62 @@ QWidget#insertRail QToolButton:hover {{
   background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
 }}
+QWidget#filesRail {{
+  background: {_RM_RAIL};
+  border-right: 1px solid rgba({_RM_ORANGE}, 0.2);
+}}
+QLabel#filesTitle {{
+  color: #ffb347;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  padding: 6px 8px;
+}}
+QWidget#filesHeader QToolButton#filesToggle {{
+  background: transparent;
+  color: #ffb347;
+  border: none;
+  border-radius: 4px;
+  min-width: 24px;
+  min-height: 24px;
+  font-size: 14px;
+  font-weight: 700;
+}}
+QWidget#filesHeader QToolButton#filesToggle:hover {{
+  background: rgba({_RM_ORANGE}, 0.22);
+  color: {_RM_STRONG};
+}}
+QLabel#filesFolder {{
+  color: {_RM_STATUS_FG};
+  font-size: 11px;
+  padding: 0 12px 8px;
+}}
+QLabel#filesEmpty {{
+  color: {_RM_STATUS_FG};
+  font-size: 12px;
+  padding: 4px 12px 12px;
+}}
+QTreeWidget#filesTree {{
+  background: transparent;
+  border: none;
+  color: {_RM_TEXT};
+  outline: none;
+  padding: 2px 6px 8px;
+}}
+QTreeWidget#filesTree::item {{
+  padding: 4px 6px;
+  border-radius: 4px;
+}}
+QTreeWidget#filesTree::item:hover {{
+  background: rgba({_RM_ORANGE}, 0.18);
+}}
+QTreeWidget#filesTree::item:selected {{
+  background: rgba({_RM_ORANGE}, 0.3);
+  color: {_RM_STRONG};
+}}
+QTreeWidget#filesTree::branch {{
+  background: transparent;
+}}
 QWidget#outlineRail {{
   background: {_RM_RAIL};
   border-left: 1px solid rgba({_RM_ORANGE}, 0.2);
@@ -329,6 +385,64 @@ QWidget#insertRail QToolButton {{
 QWidget#insertRail QToolButton:hover {{
   background: rgba(0, 0, 0, 0.18);
   color: #ffffff;
+}}
+QWidget#filesRail {{
+  background: #2a2a2c;
+  border-right: none;
+}}
+QLabel#filesTitle {{
+  background: #2a2a2c;
+  color: #f2f2f3;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  padding: 6px 8px;
+}}
+QWidget#filesHeader QToolButton#filesToggle {{
+  background: transparent;
+  color: #f2f2f3;
+  border: none;
+  border-radius: 4px;
+  min-width: 24px;
+  min-height: 24px;
+  font-size: 14px;
+  font-weight: 700;
+}}
+QWidget#filesHeader QToolButton#filesToggle:hover {{
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}}
+QLabel#filesFolder {{
+  background: #2a2a2c;
+  color: #9a9a9e;
+  font-size: 11px;
+  padding: 0 12px 8px;
+}}
+QLabel#filesEmpty {{
+  color: #9a9a9e;
+  font-size: 12px;
+  padding: 4px 12px 12px;
+}}
+QTreeWidget#filesTree {{
+  background: #2a2a2c;
+  border: none;
+  color: #f2f2f3;
+  outline: none;
+  padding: 2px 6px 8px;
+}}
+QTreeWidget#filesTree::item {{
+  padding: 4px 6px;
+  border-radius: 4px;
+}}
+QTreeWidget#filesTree::item:hover {{
+  background: rgba(255, 255, 255, 0.08);
+}}
+QTreeWidget#filesTree::item:selected {{
+  background: #e85d04;
+  color: #ffffff;
+}}
+QTreeWidget#filesTree::branch {{
+  background: #2a2a2c;
 }}
 QWidget#outlineRail {{
   background: #2a2a2c;

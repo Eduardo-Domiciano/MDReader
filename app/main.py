@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.chrome import FormatToolbar, InsertRail, StatusBar, TitleBar
+from app.files import FilesRail
 from app.icon import app_icon
 from app.editor import MarkdownEditor
 from app.images import relative_image_path, store_image
@@ -80,7 +81,8 @@ print("olá, markdown")
 ## Atalhos
 
 - **Ctrl+N** — novo arquivo
-- **Ctrl+O** — abrir
+- **Ctrl+O** — abrir arquivo
+- **Ctrl+Shift+O** — abrir pasta
 - **Ctrl+S** — salvar
 - **Ctrl+B** — negrito
 - **Ctrl+I** — itálico
@@ -105,6 +107,7 @@ class MainWindow(QMainWindow):
         self.setMouseTracking(True)
         self.resize(1280, 700)
         self._path: Path | None = None
+        self._folder: Path | None = None
         self._dirty = False
         self._theme = "dark"
         self._updating = False
@@ -112,11 +115,20 @@ class MainWindow(QMainWindow):
         self._ignore_watch_until = 0.0
         self._watcher = QFileSystemWatcher(self)
         self._watcher.fileChanged.connect(self._on_disk_changed)
+        self._folder_watcher = QFileSystemWatcher(self)
+        self._folder_watcher.directoryChanged.connect(self._on_folder_changed)
+        self._folder_watcher.fileChanged.connect(self._on_folder_changed)
+        self._folder_refresh = QTimer(self)
+        self._folder_refresh.setSingleShot(True)
+        self._folder_refresh.setInterval(250)
+        self._folder_refresh.timeout.connect(self._refresh_folder_tree)
 
         self.editor = MarkdownEditor()
         self.preview = create_preview()
         self.outline = OutlineRail()
         self.outline.heading_activated.connect(self._go_to_heading)
+        self.files = FilesRail()
+        self.files.file_activated.connect(self._open_from_tree)
         self.status = StatusBar()
 
         toolbar = FormatToolbar(self.editor)
@@ -144,13 +156,28 @@ class MainWindow(QMainWindow):
         self.splitter.setChildrenCollapsible(False)
         self._preview_sizes = [550, 620]
 
+        self.workspace_split = QSplitter(Qt.Orientation.Horizontal)
+        self.workspace_split.setObjectName("workspaceSplit")
+        self.workspace_split.addWidget(self.files)
+        content = QWidget()
+        content.setObjectName("workspace")
+        content_layout = QHBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+        content_layout.addWidget(rail)
+        content_layout.addWidget(self.splitter, 1)
+        self.workspace_split.addWidget(content)
+        self.workspace_split.setStretchFactor(0, 0)
+        self.workspace_split.setStretchFactor(1, 1)
+        self.workspace_split.setChildrenCollapsible(False)
+        self.workspace_split.setSizes([0, 1280])
+
         main_row = QWidget()
         main_row.setObjectName("workspace")
         row_layout = QHBoxLayout(main_row)
         row_layout.setContentsMargins(0, 0, 0, 0)
         row_layout.setSpacing(0)
-        row_layout.addWidget(rail)
-        row_layout.addWidget(self.splitter, 1)
+        row_layout.addWidget(self.workspace_split, 1)
 
         root = QWidget()
         root.setObjectName("workspace")
@@ -215,10 +242,15 @@ class MainWindow(QMainWindow):
         arquivo = self.menuBar().addMenu("&Arquivo")
         arquivo.addAction(self._action("&Novo", self.new_file, QKeySequence.StandardKey.New))
         arquivo.addAction(self._action("&Abrir…", self.open_file, QKeySequence.StandardKey.Open))
+        arquivo.addAction(
+            self._action("Abrir &pasta…", self.open_folder, QKeySequence("Ctrl+Shift+O"))
+        )
         arquivo.addAction(self._action("&Salvar", self.save_file, QKeySequence.StandardKey.Save))
         arquivo.addAction(
             self._action("Salvar &como…", self.save_file_as, QKeySequence.StandardKey.SaveAs)
         )
+        arquivo.addSeparator()
+        arquivo.addAction(self._action("&Fechar pasta", self.close_folder))
         arquivo.addSeparator()
         arquivo.addAction(self._action("&Sair", self.close, QKeySequence.StandardKey.Quit))
 
@@ -301,6 +333,74 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(title)
         if hasattr(self, "title_bar"):
             self.title_bar.set_title(title)
+        if hasattr(self, "files"):
+            self.files.select_path(self._path)
+
+    def open_folder(self) -> None:
+        start = str(self._folder or (self._path.parent if self._path else Path.home()))
+        chosen = QFileDialog.getExistingDirectory(self, "Abrir pasta", start)
+        if not chosen:
+            return
+        folder = Path(chosen).resolve()
+        if not folder.is_dir():
+            QMessageBox.warning(self, "Abrir pasta", "Pasta inválida.")
+            return
+        self._folder = folder
+        self.files.set_root(folder)
+        self._watch_folder()
+        sizes = self.workspace_split.sizes()
+        if not sizes or sizes[0] < 120:
+            total = sum(sizes) if sizes else self.width()
+            self.workspace_split.setSizes([220, max(total - 220, 400)])
+        self.files.select_path(self._path)
+        self.status.flash(f"Pasta: {folder.name}")
+
+    def close_folder(self) -> None:
+        self._folder = None
+        self.files.set_root(None)
+        self._watch_folder()
+        self.workspace_split.setSizes([0, max(sum(self.workspace_split.sizes()), 800)])
+        self.status.flash("Pasta fechada")
+
+    def _watch_folder(self) -> None:
+        for existing in list(self._folder_watcher.directories()):
+            self._folder_watcher.removePath(existing)
+        for existing in list(self._folder_watcher.files()):
+            self._folder_watcher.removePath(existing)
+        if self._folder is None:
+            return
+        for path in self.files.watched_dirs():
+            if path not in self._folder_watcher.directories():
+                self._folder_watcher.addPath(path)
+
+    def _on_folder_changed(self, _changed: str) -> None:
+        self._folder_refresh.start()
+
+    def _refresh_folder_tree(self) -> None:
+        if self._folder is None:
+            return
+        self.files.refresh()
+        self._watch_folder()
+        self.files.select_path(self._path)
+
+    def _open_from_tree(self, path: Path) -> None:
+        opened = path.resolve()
+        if self._path is not None and opened == self._path.resolve():
+            return
+        if not self._confirm_discard():
+            self.files.select_path(self._path)
+            return
+        try:
+            text = opened.read_text(encoding="utf-8")
+        except OSError as exc:
+            QMessageBox.critical(self, "Erro ao abrir", str(exc))
+            self.files.select_path(self._path)
+            return
+        self._path = opened
+        self._watch_file(opened)
+        self._set_editor_text(text, dirty=False)
+        self._refresh_preview(keep_scroll=False)
+        self.files.select_path(opened)
 
     def _confirm_discard(self) -> bool:
         if not self._dirty:
@@ -385,16 +485,22 @@ class MainWindow(QMainWindow):
             return
         self._path = None
         self._watch_file(None)
+        self.files.select_path(None)
         self._set_editor_text("", dirty=False)
         self._refresh_preview(keep_scroll=False)
 
     def open_file(self) -> None:
         if not self._confirm_discard():
             return
+        start = ""
+        if self._path:
+            start = str(self._path.parent)
+        elif self._folder:
+            start = str(self._folder)
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Abrir Markdown",
-            str(self._path.parent) if self._path else "",
+            start,
             "Markdown (*.md *.markdown *.mdown);;Todos os arquivos (*)",
         )
         if not path:
@@ -409,6 +515,7 @@ class MainWindow(QMainWindow):
         self._watch_file(opened)
         self._set_editor_text(text, dirty=False)
         self._refresh_preview(keep_scroll=False)
+        self.files.select_path(opened)
 
     def save_file(self) -> bool:
         if self._path is None:
@@ -416,7 +523,12 @@ class MainWindow(QMainWindow):
         return self._write_to(self._path)
 
     def save_file_as(self) -> bool:
-        suggested = str(self._path) if self._path else "sem-titulo.md"
+        if self._path is not None:
+            suggested = str(self._path)
+        elif self._folder is not None:
+            suggested = str(self._folder / "sem-titulo.md")
+        else:
+            suggested = "sem-titulo.md"
         path, _ = QFileDialog.getSaveFileName(
             self,
             "Salvar Markdown",
@@ -433,6 +545,8 @@ class MainWindow(QMainWindow):
             self._watch_file(target)
             self._update_title()
             self._refresh_preview()
+            if self._folder is not None:
+                self._refresh_folder_tree()
             return True
         return False
 
@@ -523,8 +637,9 @@ def run() -> None:
     import sys
 
     app = QApplication.instance() or QApplication(sys.argv)
+    app.setOrganizationName("MDReader")
     app.setApplicationName("MDReader")
-    app.setDesktopFileName("mdreader")
+    app.setApplicationDisplayName("MDReader")
     icon = app_icon()
     app.setWindowIcon(icon)
     configure_app(app)
