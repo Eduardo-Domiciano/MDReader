@@ -22,6 +22,7 @@ from PySide6.QtGui import (
     QPainter,
     QPaintEvent,
     QPen,
+    QResizeEvent,
     QTextCursor,
     QTextLength,
     QTextOption,
@@ -215,6 +216,24 @@ class CopyCodeBrowser(QTextBrowser):
         self._cmd_text = _CMD_TEXT
         self._cmd_fill = _CMD_FILL
         self._cmd_border = _CMD_BORDER
+        self._native_images: dict[str, tuple[float, float]] = {}
+        self._fit_timer = QTimer(self)
+        self._fit_timer.setSingleShot(True)
+        self._fit_timer.setInterval(40)
+        self._fit_timer.timeout.connect(self._refit_images)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._fit_timer.start()
+
+    def _refit_images(self) -> None:
+        vbar = self.verticalScrollBar()
+        hbar = self.horizontalScrollBar()
+        saved = (vbar.value(), hbar.value())
+        _fit_preview_images(self)
+        _tighten_image_blocks(self)
+        vbar.setValue(min(saved[0], vbar.maximum()))
+        hbar.setValue(min(saved[1], hbar.maximum()))
 
     def set_command_colors(self, theme: str) -> None:
         self._cmd_text = _CMD_TEXT
@@ -695,9 +714,16 @@ def _fit_preview_tables(view: QTextBrowser) -> None:
 
 
 def _fit_preview_images(view: QTextBrowser) -> None:
-    """Ajusta largura/altura das imagens para o viewport — o Qt reserva a altura nativa."""
+    """Encaixa imagens no painel. Diagramas cabem na área visível, sem distorcer."""
     doc = view.document()
-    max_w = max(float(view.viewport().width() - 28), 120.0)
+    viewport = view.viewport()
+    # Reserva a barra vertical mesmo quando ela ainda não apareceu, para o
+    # diagrama não crescer e encolher sem parar ao ligar a rolagem.
+    scroll = view.verticalScrollBar()
+    extra = 0 if scroll.isVisible() else scroll.sizeHint().width()
+    max_w = max(float(viewport.width() - 48 - extra), 160.0)
+    max_h = max(float(viewport.height() - 96), 140.0)
+    cache = getattr(view, "_native_images", None)
     cursor = QTextCursor(doc)
     block = doc.begin()
     while block.isValid():
@@ -707,37 +733,59 @@ def _fit_preview_images(view: QTextBrowser) -> None:
             fmt = fragment.charFormat()
             if fragment.isValid() and fmt.isImageFormat():
                 image = fmt.toImageFormat()
-                width = float(image.width())
-                height = float(image.height())
-                if width <= 0 or height <= 0:
-                    name = image.name()
-                    if name:
-                        size = doc.resource(doc.ResourceType.ImageResource, QUrl(name))
-                        if size is not None and hasattr(size, "width"):
-                            width = float(size.width()) if width <= 0 else width
-                            height = float(size.height()) if height <= 0 else height
-                if width > max_w and width > 0 and height > 0:
-                    scale = max_w / width
-                    image.setWidth(max_w)
-                    image.setHeight(height * scale)
-                    cursor.setPosition(fragment.position())
-                    cursor.setPosition(
-                        fragment.position() + fragment.length(),
-                        QTextCursor.MoveMode.KeepAnchor,
-                    )
-                    cursor.setCharFormat(image)
-                elif width > 0 and height > 0:
-                    # Garante altura explícita para o layout não deixar vão sobrando.
-                    image.setWidth(width)
-                    image.setHeight(height)
-                    cursor.setPosition(fragment.position())
-                    cursor.setPosition(
-                        fragment.position() + fragment.length(),
-                        QTextCursor.MoveMode.KeepAnchor,
-                    )
-                    cursor.setCharFormat(image)
+                native_w, native_h = _native_image_size(doc, image, cache)
+                if native_w > 0 and native_h > 0:
+                    if _is_diagram_image(image.name()):
+                        scale = min(max_w / native_w, max_h / native_h)
+                    else:
+                        scale = min(max_w / native_w, 1.0)
+                    target_w = native_w * scale
+                    target_h = native_h * scale
+                    if (
+                        abs(float(image.width()) - target_w) > 1.5
+                        or abs(float(image.height()) - target_h) > 1.5
+                    ):
+                        image.setWidth(target_w)
+                        image.setHeight(target_h)
+                        cursor.setPosition(fragment.position())
+                        cursor.setPosition(
+                            fragment.position() + fragment.length(),
+                            QTextCursor.MoveMode.KeepAnchor,
+                        )
+                        cursor.setCharFormat(image)
             it += 1
         block = block.next()
+
+
+def _is_diagram_image(name: str) -> bool:
+    return "mdreader-diagrams" in name.replace("\\", "/")
+
+
+def _native_image_size(doc, image, cache: dict[str, tuple[float, float]] | None) -> tuple[float, float]:
+    name = image.name()
+    if cache is not None and name in cache:
+        return cache[name]
+    width, height = _resource_image_size(doc, name)
+    if width <= 0 or height <= 0:
+        width = float(image.width())
+        height = float(image.height())
+    if cache is not None and name and width > 0 and height > 0:
+        cache[name] = (width, height)
+    return width, height
+
+
+def _resource_image_size(doc, name: str) -> tuple[float, float]:
+    if not name:
+        return 0.0, 0.0
+    urls = [QUrl(name), QUrl.fromLocalFile(QUrl(name).toLocalFile() or name)]
+    for url in urls:
+        resource = doc.resource(doc.ResourceType.ImageResource, url)
+        if resource is not None and hasattr(resource, "width"):
+            width = float(resource.width())
+            height = float(resource.height())
+            if width > 0 and height > 0:
+                return width, height
+    return 0.0, 0.0
 
 
 def _tighten_image_blocks(view: QTextBrowser) -> None:
