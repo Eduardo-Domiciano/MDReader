@@ -1,10 +1,13 @@
 # MDReader
 
-Editor Markdown para o desktop. Você escreve à esquerda e vê o resultado renderizado à direita, ao vivo. Feito em Python e PySide6, pensado primeiro para Ubuntu e depois portátil para outros sistemas.
+Editor Markdown para o desktop. Você escreve à esquerda e vê o resultado renderizado à direita, ao vivo. Feito em Python e PySide6, pensado primeiro para Ubuntu, mas o empacotamento é via PyInstaller.
+
+> IMPORTANTE: Não é um editor de codigo, apenas um projeto que edita arquivos markdown, pra ajudar a fazer documentação.
+{.is-warning}
 
 ![MDReader](img/screenshot.png)
 
-O preview acompanha o cursor do editor, a barra de arquivos à esquerda lista os `.md` de uma pasta, o índice à direita leva aos títulos de textos longos, e a paleta segue um tema escuro (padrão) ou claro, com laranja como cor de acento.
+O preview acompanha o cursor do editor, a barra de arquivos à esquerda lista os `.md` de uma pasta, o índice à direita leva aos títulos de textos longos, e a paleta segue um tema escuro (padrão) ou claro, com laranja como cor principal.
 
 ## Rodar no Ubuntu
 
@@ -35,7 +38,7 @@ Executável local (PyInstaller):
 ./scripts/package.sh
 ```
 
-O binário fica em um único arquivo, `dist/MDReader`. O `.deb` e os instaladores de outros sistemas ficam para um passo seguinte. Não é preciso reescrever o app.
+O binário fica em um único arquivo, `dist/MDReader`. Ainda nao testei em Windows. Não é preciso reescrever o app.
 
 ## Como as imagens são salvas
 
@@ -61,7 +64,7 @@ A janela tem cinco áreas:
 1. **Arquivos** — barra lateral esquerda (após **Arquivo → Abrir pasta…**). Lista pastas e arquivos `.md`; clique para abrir.
 2. **Barra de inserção** — ligação, imagem, comando inline, bloco de código e recarregar o arquivo **(R)**.
 3. **Editor** — texto Markdown em fonte monoespaçada.
-4. **Preview** — renderização ao vivo. Comandos `` `assim` `` viram chips clicáveis (copiam o texto). Blocos ` ``` ` ganham uma caixa com botão **Copiar**; também dá para selecionar trechos e copiar com Ctrl+C.
+4. **Preview** — renderização ao vivo. Comandos `` `assim` `` viram chips clicáveis (copiam o texto). Blocos ` ``` ` ganham uma caixa com botão **Copiar** e o nome da linguagem (`bash`, `python`, `html`, `http`, `nodejs`, `typescript`, `go`). Diagramas `mermaid`, `flowchart`, `erDiagram` e `sequenceDiagram` são desenhados. Também dá para selecionar trechos e copiar com Ctrl+C.
 5. **Índice** — lista os títulos do documento. Clique para ir até o título no preview e no editor.
 
 No topo, a barra de formatação (negrito, itálico, rasurado, títulos e avisos). No fim dela há um botão para **ocultar o preview**; o editor passa a ocupar a janela. Embaixo, a barra de status mostra tipo do arquivo e a posição do cursor (Ln, Col).
@@ -120,4 +123,12 @@ Os tipos são `{.is-info}`, `{.is-warning}`, `{.is-danger}` e `{.is-record}`.
 | **Ctrl+I** | Itálico |
 | **Ctrl+Q** | Sair |
 
+
+---
+
 Menus **Arquivo** (inclui Fechar pasta) e **Visualizar** (tema escuro / tema claro) cobrem o restante. O app abre no tema escuro.
+
+
+## Proposta
+
+A ideia é ter um editor especifico de arquivos markdown vendo o resultado em tempo real. Claro que os formatos do texto final depende do app que esta rodando. Aqui eu criei o design que eu gostei mais, mas ao rodar no github por exemplo, o design vai ser formato github. Ainda sim, todas as ferramentas basicas como tabelas, blocos de informação e titulos são o padrão do markdown, o que faz com que o texto seja gerado em qualquer app que aceite o formato md. Eu Prefiro fazer minha documentação em markdown, como voicê pode ver no projeto com o `docdir.md`, checando sempre o estado atual do projeto.

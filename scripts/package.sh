@@ -24,6 +24,10 @@ pyinstaller \
   --name MDReader \
   --add-data "app/icon.png:app" \
   --collect-all PySide6_Essentials \
+  --collect-all mmdc \
+  --collect-all termaid \
+  --collect-all quickjs \
+  --collect-all resvg_py \
   app/__main__.py
 
 rm -f "$root/dist/mdreader.png" "$root/dist/mdreader.desktop"

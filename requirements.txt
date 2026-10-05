@@ -2,3 +2,4 @@ PySide6_Essentials>=6.6,<6.11
 markdown-it-py>=3.0,<4
 Pygments>=2.17
 bleach>=6.1
+mmdc>=0.7

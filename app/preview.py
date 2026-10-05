@@ -30,6 +30,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QApplication, QTextBrowser, QWidget
 
 from app.callouts import apply_blockquote_callouts
+from app.diagrams import FenceKind, diagram_image_html, resolve_fence
 from app.images import apply_image_sizes, normalize_wiki_images, resolve_local_image_srcs
 
 _PRE_SPLIT_RE = re.compile(
@@ -94,10 +95,10 @@ ALLOWED_ATTRIBUTES = {
     "img": ["src", "alt", "title", "width", "height"],
     "td": ["align", "id", "width"],
     "th": ["align", "id", "width"],
-    "code": ["class", "id"],
+    "code": ["class", "id", "title"],
     "div": ["class", "id"],
-    "span": ["class", "id"],
-    "pre": ["class", "id"],
+    "span": ["class", "id", "title"],
+    "pre": ["class", "id", "title"],
     "blockquote": ["class", "id"],
     "p": ["id", "class"],
     "h1": ["id"],
@@ -119,12 +120,37 @@ def _formatter(theme: str) -> HtmlFormatter:
     return HtmlFormatter(nowrap=True, cssclass="highlight", style=style)
 
 
-def _highlight_code(code: str, language: str, _attrs: str) -> str:
+_LABEL_SPAN_RE = re.compile(
+    r'<span class="md-(?:label|diagram)" title="([^"]*)"></span>',
+    re.IGNORECASE,
+)
+
+
+def _label_span(kind: FenceKind) -> str:
+    if not kind.label:
+        return ""
+    css = "md-diagram" if kind.diagram_source is not None else "md-label"
+    title = html.escape(kind.label, quote=True)
+    return f'<span class="{css}" title="{title}"></span>'
+
+
+def _highlight_code(code: str, language: str, attrs: str) -> str:
+    kind = resolve_fence(language, attrs, code)
+    if kind.diagram_source is not None:
+        return _label_span(kind) + html.escape(kind.diagram_source)
+    lexer_name = kind.lexer
+    if not lexer_name and not language:
+        try:
+            lexer_name = guess_lexer(code).aliases[0] if code.strip() else None
+        except ClassNotFound:
+            lexer_name = None
+    if not lexer_name:
+        return _label_span(kind) + html.escape(code)
     try:
-        lexer = get_lexer_by_name(language) if language else guess_lexer(code)
+        colored = highlight(code, get_lexer_by_name(lexer_name), _formatter("dark"))
     except ClassNotFound:
-        return html.escape(code)
-    return highlight(code, lexer, _formatter("dark"))
+        colored = html.escape(code)
+    return _label_span(kind) + colored
 
 
 def _source_line_ids(md: MarkdownIt) -> None:
@@ -271,9 +297,9 @@ class CopyCodeBrowser(QTextBrowser):
         last = max(self.document().characterCount() - 1, 0)
         cursor.setPosition(min(max(position, 0), last))
         table = cursor.currentTable()
-        if table is None:
+        if table is None or table.columns() < 2:
             return False
-        return table.cellAt(0, 0).firstCursorPosition().block().text().strip() == "Código"
+        return table.cellAt(0, 1).firstCursorPosition().block().text().strip() == "Copiar"
 
     def _line_cursor_x(self, line, pos_in_block: int) -> float:
         value = line.cursorToX(pos_in_block)
@@ -509,9 +535,20 @@ def _pre_inner_html(chunk: str) -> str:
     inner = re.sub(r"</pre>\s*$", "", inner, count=1, flags=re.IGNORECASE)
     inner = re.sub(r"^<code\b[^>]*>", "", inner, count=1, flags=re.IGNORECASE)
     inner = re.sub(r"</code>\s*$", "", inner, count=1, flags=re.IGNORECASE)
+    inner = _LABEL_SPAN_RE.sub("", inner, count=1)
     if inner.endswith("\n"):
         inner = inner[:-1]
     return inner.replace("\n", "<br>")
+
+
+def _chunk_label(chunk: str) -> str:
+    match = _LABEL_SPAN_RE.search(chunk)
+    if match:
+        return html.unescape(match.group(1))
+    lang = re.search(r'\blanguage-([^\s"]+)', chunk)
+    if lang:
+        return html.unescape(lang.group(1))
+    return "Código"
 
 
 def _replace_outer_pre(body: str, replace) -> str:
@@ -549,7 +586,7 @@ def _replace_outer_pre(body: str, replace) -> str:
     return "".join(out)
 
 
-def wrap_fenced_code_blocks(body: str, accent: str = "#e85d04") -> str:
+def wrap_fenced_code_blocks(body: str, accent: str = "#e85d04", theme: str = "dark") -> str:
     """Envolve ```código``` numa caixa com botão Copiar no topo direito."""
 
     def wrap_chunk(chunk: str) -> str:
@@ -558,7 +595,15 @@ def wrap_fenced_code_blocks(body: str, accent: str = "#e85d04") -> str:
         _COPY_PAYLOADS[key] = text
         href = f"mdblock:?id={key}"
         copy = f'<a href="{href}" class="md-codeblock__copy" style="{_COPY_BTN_STYLE}">Copiar</a>'
-        body_html = _pre_inner_html(chunk)
+        label = html.escape(_chunk_label(chunk))
+        diagram = _LABEL_SPAN_RE.search(chunk)
+        image = None
+        if diagram and "md-diagram" in diagram.group(0):
+            image = diagram_image_html(text, theme, _chunk_label(chunk))
+        if image:
+            body_html = image
+        else:
+            body_html = _pre_inner_html(chunk)
         src = re.search(r'\sid="(src-\d+)"', chunk)
         anchor = f'<a name="{src.group(1)}"></a>' if src else ""
         return (
@@ -568,7 +613,7 @@ def wrap_fenced_code_blocks(body: str, accent: str = "#e85d04") -> str:
             f'style="background-color:#000000;margin:12px 0;border:2px solid {accent};">'
             "<tr>"
             '<td bgcolor="#000000" style="background-color:#000000;color:#9aa3ad;'
-            'padding:8px 10px;font-size:12px;font-weight:650;">Código</td>'
+            f'padding:8px 10px;font-size:12px;font-weight:650;">{label}</td>'
             '<td bgcolor="#000000" align="right" style="background-color:#000000;'
             f'padding:8px 10px;">{copy}</td>'
             "</tr>"
@@ -628,8 +673,11 @@ def _fit_preview_tables(view: QTextBrowser) -> None:
             child = iterator.currentFrame()
             if child is not None:
                 if isinstance(child, QTextTable):
-                    first = child.cellAt(0, 0).firstCursorPosition().block().text().strip()
-                    if first != "Código":
+                    if child.columns() < 2:
+                        copy = ""
+                    else:
+                        copy = child.cellAt(0, 1).firstCursorPosition().block().text().strip()
+                    if copy != "Copiar":
                         fmt = child.format()
                         fmt.setWidth(QTextLength(QTextLength.Type.PercentageLength, 100))
                         cols = child.columns()
@@ -753,7 +801,7 @@ def markdown_to_body(source: str, theme: str = "dark") -> str:
     cleaned = mark_image_paragraphs(apply_image_sizes(cleaned, sizes))
     accent = "#e85d04"
     return inject_heading_anchors(
-        linkify_inline_code(wrap_fenced_code_blocks(apply_blockquote_callouts(cleaned, theme), accent))
+        linkify_inline_code(wrap_fenced_code_blocks(apply_blockquote_callouts(cleaned, theme), accent, theme))
     )
 
 
