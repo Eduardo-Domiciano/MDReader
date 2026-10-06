@@ -213,6 +213,7 @@ def _rail_button(text: str, tooltip: str) -> QToolButton:
 
 class FormatToolbar(QToolBar):
     preview_toggled = Signal(bool)
+    edit_requested = Signal()
 
     def __init__(self, editor: MarkdownEditor, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -250,12 +251,7 @@ class FormatToolbar(QToolBar):
         sep.setFixedHeight(18)
         sep.setStyleSheet("color: rgba(255, 255, 255, 0.28);")
 
-        self.addWidget(bold)
-        self.addWidget(italic)
-        self.addWidget(strike)
-        self.addWidget(sep)
-        self.addWidget(heading)
-        self.addWidget(info)
+        self._format_actions = [self.addWidget(widget) for widget in (bold, italic, strike, sep, heading, info)]
 
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
@@ -269,8 +265,25 @@ class FormatToolbar(QToolBar):
         preview_btn.setChecked(True)
         preview_btn.setToolTip("Ocultar pré-visualização")
         preview_btn.toggled.connect(self._on_preview_toggled)
-        self.addWidget(preview_btn)
+        self._preview_action = self.addWidget(preview_btn)
         self._preview_btn = preview_btn
+
+        edit_btn = QToolButton()
+        edit_btn.setObjectName("editButton")
+        edit_btn.setText("Editar")
+        edit_btn.setToolTip("Dividir a janela entre o texto e a renderização")
+        edit_btn.setAutoRaise(False)
+        edit_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        edit_btn.clicked.connect(self.edit_requested.emit)
+        self._edit_action = self.addWidget(edit_btn)
+        self._edit_btn = edit_btn
+        self.set_reading(True)
+
+    def set_reading(self, reading: bool) -> None:
+        for action in self._format_actions:
+            action.setVisible(not reading)
+        self._preview_action.setVisible(not reading)
+        self._edit_action.setVisible(reading)
 
     def _on_preview_toggled(self, visible: bool) -> None:
         self._preview_btn.setToolTip(

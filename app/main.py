@@ -28,7 +28,7 @@ from app.theme import apply_theme, configure_app
 
 WELCOME_MARKDOWN = """# MDReader
 
-Escreva Markdown à esquerda e veja o resultado à direita.
+O arquivo aberto aparece renderizado. Use **Editar** para dividir a janela entre o texto e o resultado ao vivo.
 
 ## Títulos
 
@@ -131,9 +131,12 @@ class MainWindow(QMainWindow):
         self.files.file_activated.connect(self._open_from_tree)
         self.status = StatusBar()
 
-        toolbar = FormatToolbar(self.editor)
-        toolbar.preview_toggled.connect(self.set_preview_visible)
+        self.toolbar = FormatToolbar(self.editor)
+        self.toolbar.preview_toggled.connect(self.set_preview_visible)
+        self.toolbar.edit_requested.connect(lambda: self.set_editing(True))
+        self._editing = False
         rail = InsertRail(self.editor)
+        self.rail = rail
         rail.image_requested.connect(self._pick_image)
         rail.reload_requested.connect(self.reload_file)
         self.editor.image_dropped.connect(self._insert_image_file)
@@ -184,7 +187,7 @@ class MainWindow(QMainWindow):
         root_layout = QVBoxLayout(root)
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
-        root_layout.addWidget(toolbar)
+        root_layout.addWidget(self.toolbar)
         root_layout.addWidget(main_row, 1)
         root_layout.addWidget(self.status)
         self.setCentralWidget(root)
@@ -215,8 +218,26 @@ class MainWindow(QMainWindow):
         apply_theme(self, self._theme)
         self._set_editor_text(WELCOME_MARKDOWN, dirty=False)
         self._refresh_preview()
+        self.set_editing(False)
         self._update_title()
         self._update_status()
+
+    def set_editing(self, editing: bool) -> None:
+        """Leitura mostra só o texto renderizado. Editar divide editor e preview."""
+        self._editing = editing
+        self.toolbar.set_reading(not editing)
+        self.rail.setVisible(editing)
+        self.editor.setVisible(editing)
+        self.preview_pane.show()
+        total = sum(self.splitter.sizes()) or max(self.width(), 800)
+        if editing:
+            sizes = self._preview_sizes or [550, 620]
+            if len(sizes) < 2 or sizes[0] < 80:
+                sizes = [total // 2, total - total // 2]
+            self.splitter.setSizes(sizes)
+            self.editor.setFocus()
+        else:
+            self.splitter.setSizes([0, total])
 
     def set_preview_visible(self, visible: bool) -> None:
         pane = self.preview_pane
@@ -400,6 +421,7 @@ class MainWindow(QMainWindow):
         self._watch_file(opened)
         self._set_editor_text(text, dirty=False)
         self._refresh_preview(keep_scroll=False)
+        self.set_editing(False)
         self.files.select_path(opened)
 
     def _confirm_discard(self) -> bool:
@@ -488,6 +510,7 @@ class MainWindow(QMainWindow):
         self.files.select_path(None)
         self._set_editor_text("", dirty=False)
         self._refresh_preview(keep_scroll=False)
+        self.set_editing(True)
 
     def open_file(self) -> None:
         if not self._confirm_discard():
@@ -515,6 +538,7 @@ class MainWindow(QMainWindow):
         self._watch_file(opened)
         self._set_editor_text(text, dirty=False)
         self._refresh_preview(keep_scroll=False)
+        self.set_editing(False)
         self.files.select_path(opened)
 
     def save_file(self) -> bool:

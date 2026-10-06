@@ -118,6 +118,18 @@ QToolBar#formatBar QToolButton::menu-indicator {{
   image: none;
   width: 0;
 }}
+QToolBar#formatBar QToolButton#editButton {{
+  background: #e85d04;
+  color: #fff8f0;
+  border-radius: 4px;
+  padding: 0 14px;
+  min-width: 72px;
+  font-size: 13px;
+}}
+QToolBar#formatBar QToolButton#editButton:hover {{
+  background: #ff6a1a;
+  color: #fff8f0;
+}}
 QWidget#insertRail {{
   background-color: #2a2a2c;
   border: none;
@@ -368,6 +380,18 @@ QToolBar#formatBar QToolButton:checked {{
 QToolBar#formatBar QToolButton::menu-indicator {{
   image: none;
   width: 0;
+}}
+QToolBar#formatBar QToolButton#editButton {{
+  background: #e85d04;
+  color: #fff8f0;
+  border-radius: 4px;
+  padding: 0 14px;
+  min-width: 72px;
+  font-size: 13px;
+}}
+QToolBar#formatBar QToolButton#editButton:hover {{
+  background: #c44e03;
+  color: #fff8f0;
 }}
 QWidget#insertRail {{
   background-color: #e85d04;

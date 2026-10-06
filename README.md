@@ -1,6 +1,6 @@
 # MDReader
 
-Editor Markdown para o desktop. Você escreve à esquerda e vê o resultado renderizado à direita, ao vivo. Feito em Python e PySide6, pensado primeiro para Ubuntu, mas o empacotamento é via PyInstaller.
+Editor Markdown para o desktop. Ao abrir um arquivo, a janela mostra o texto renderizado. O botão **Editar** divide a tela entre o texto e o resultado ao vivo. Feito em Python e PySide6, pensado primeiro para Ubuntu, mas o empacotamento é via PyInstaller.
 
 > IMPORTANTE: Não é um editor de codigo, apenas um projeto que edita arquivos markdown, pra ajudar a fazer documentação.
 {.is-warning}
@@ -62,14 +62,15 @@ Sintaxe no texto (tamanhos no estilo Wiki.js):
 A janela tem cinco áreas:
 
 1. **Arquivos** — barra lateral esquerda (após **Arquivo → Abrir pasta…**). Lista pastas e arquivos `.md`; clique para abrir.
-2. **Barra de inserção** — ligação, imagem, comando inline, bloco de código e recarregar o arquivo **(R)**.
-3. **Editor** — texto Markdown em fonte monoespaçada.
-4. **Preview** — renderização ao vivo. Comandos `` `assim` `` viram chips clicáveis (copiam o texto). Blocos ` ``` ` ganham uma caixa com botão **Copiar** e o nome da linguagem (`bash`, `python`, `html`, `http`, `nodejs`, `typescript`, `go`). Diagramas `mermaid`, `flowchart`, `erDiagram` e `sequenceDiagram` são desenhados. Também dá para selecionar trechos e copiar com Ctrl+C.
-5. **Índice** — lista os títulos do documento. Clique para ir até o título no preview e no editor.
+2. **Leitura** — ao abrir um arquivo, ou ao escolhê-lo na pasta, a janela mostra só a renderização e o botão **Editar**.
+3. **Barra de inserção** — aparece no modo de edição: ligação, imagem, comando inline, bloco de código e recarregar o arquivo **(R)**.
+4. **Editor** — texto Markdown em fonte monoespaçada, ao lado do preview, depois de clicar em **Editar**.
+5. **Preview** — renderização ao vivo. Comandos `` `assim` `` viram chips clicáveis (copiam o texto). Blocos ` ``` ` ganham uma caixa com botão **Copiar** e o nome da linguagem (`bash`, `python`, `html`, `http`, `nodejs`, `typescript`, `go`). Diagramas `mermaid`, `flowchart`, `erDiagram` e `sequenceDiagram` são desenhados. Também dá para selecionar trechos e copiar com Ctrl+C.
+6. **Índice** — lista os títulos do documento. Clique para ir até o título no preview e no editor.
 
-No topo, a barra de formatação (negrito, itálico, rasurado, títulos e avisos). No fim dela há um botão para **ocultar o preview**; o editor passa a ocupar a janela. Embaixo, a barra de status mostra tipo do arquivo e a posição do cursor (Ln, Col).
+No modo de edição, a barra de formatação (negrito, itálico, rasurado, títulos e avisos) fica no topo. No fim dela há um botão para **ocultar o preview**; o editor passa a ocupar a janela. Embaixo, a barra de status mostra tipo do arquivo e a posição do cursor (Ln, Col).
 
-O preview atualiza enquanto você digita e rola até o bloco correspondente à linha do cursor.
+O preview atualiza enquanto você digita e rola até o bloco correspondente à linha do cursor. Um arquivo novo (Ctrl+N) já abre dividido, pronto para escrever.
 
 ## Opções de edição
 
