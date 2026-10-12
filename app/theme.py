@@ -130,6 +130,19 @@ QToolBar#formatBar QToolButton#editButton:hover {{
   background: #ff6a1a;
   color: #fff8f0;
 }}
+QToolBar#formatBar QToolButton#closeEditorButton {{
+  background: transparent;
+  color: #fff8f0;
+  border: 1px solid rgba(255, 248, 240, 0.55);
+  border-radius: 4px;
+  padding: 0 12px;
+  min-width: 112px;
+  font-size: 13px;
+}}
+QToolBar#formatBar QToolButton#closeEditorButton:hover {{
+  background: rgba(255, 248, 240, 0.16);
+  color: #fff8f0;
+}}
 QWidget#insertRail {{
   background-color: #2a2a2c;
   border: none;
@@ -391,6 +404,19 @@ QToolBar#formatBar QToolButton#editButton {{
 }}
 QToolBar#formatBar QToolButton#editButton:hover {{
   background: #c44e03;
+  color: #fff8f0;
+}}
+QToolBar#formatBar QToolButton#closeEditorButton {{
+  background: transparent;
+  color: #fff8f0;
+  border: 1px solid rgba(255, 248, 240, 0.55);
+  border-radius: 4px;
+  padding: 0 12px;
+  min-width: 112px;
+  font-size: 13px;
+}}
+QToolBar#formatBar QToolButton#closeEditorButton:hover {{
+  background: rgba(255, 248, 240, 0.16);
   color: #fff8f0;
 }}
 QWidget#insertRail {{

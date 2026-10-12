@@ -70,7 +70,7 @@ A janela tem cinco áreas:
 
 No modo de edição, a barra de formatação (negrito, itálico, rasurado, títulos e avisos) fica no topo. No fim dela há um botão para **ocultar o preview**; o editor passa a ocupar a janela. Embaixo, a barra de status mostra tipo do arquivo e a posição do cursor (Ln, Col).
 
-O preview atualiza enquanto você digita e rola até o bloco correspondente à linha do cursor. Um arquivo novo (Ctrl+N) já abre dividido, pronto para escrever.
+O preview atualiza enquanto você digita e rola até o bloco correspondente à linha do cursor. **Fechar editor**, na mesma barra, volta para a renderização. Um arquivo novo (Ctrl+N) já abre dividido, pronto para escrever.
 
 ## Opções de edição
 

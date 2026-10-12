@@ -226,6 +226,15 @@ class CopyCodeBrowser(QTextBrowser):
         super().resizeEvent(event)
         self._fit_timer.start()
 
+    def scrollContentsBy(self, dx: int, dy: int) -> None:
+        """Redesenha o painel inteiro ao rolar.
+
+        O Qt copia o desenho antigo. Com várias caixas de código, essa cópia
+        apaga o texto que fica entre elas até o preview ser aberto de novo.
+        """
+        del dx, dy
+        self.viewport().update()
+
     def _refit_images(self) -> None:
         vbar = self.verticalScrollBar()
         hbar = self.horizontalScrollBar()
@@ -755,6 +764,66 @@ def _fit_preview_images(view: QTextBrowser) -> None:
                         cursor.setCharFormat(image)
             it += 1
         block = block.next()
+    _lift_text_below_code_tables(view)
+
+
+def _is_code_table(table: QTextTable) -> bool:
+    if table.columns() < 2:
+        return False
+    label = table.cellAt(0, 1).firstCursorPosition().block().text().strip()
+    return label == "Copiar"
+
+
+def _lift_text_below_code_tables(view: QTextBrowser) -> None:
+    """Afasta o bloco seguinte da caixa de código.
+
+    A tabela ocupa cerca de uma linha a mais do que o conteúdo. Esse pedaço
+    cobre o texto logo abaixo, e a rolagem deixa de redesenhá-lo.
+    """
+    doc = view.document()
+    layout = doc.documentLayout()
+    if layout is None:
+        return
+    iterator = doc.rootFrame().begin()
+    while not iterator.atEnd():
+        frame = iterator.currentFrame()
+        if isinstance(frame, QTextTable) and _is_code_table(frame):
+            bottom = layout.frameBoundingRect(frame).bottom()
+            following = iterator
+            following += 1
+            if not following.atEnd():
+                _clear_frame_overlap(following, bottom, layout)
+        iterator += 1
+
+
+def _clear_frame_overlap(iterator, bottom: float, layout) -> None:
+    frame = iterator.currentFrame()
+    if frame is not None:
+        rect = layout.frameBoundingRect(frame)
+        _add_top_margin(frame.format(), bottom - rect.top(), frame.setFormat)
+        return
+    block = iterator.currentBlock()
+    if not block.isValid():
+        return
+    if not block.text().strip():
+        block = block.next()
+    if not block.isValid():
+        return
+    rect = layout.blockBoundingRect(block)
+    fmt = block.blockFormat()
+
+    def apply(updated) -> None:
+        QTextCursor(block).setBlockFormat(updated)
+
+    _add_top_margin(fmt, bottom - rect.top(), apply)
+
+
+def _add_top_margin(fmt, overlap: float, apply) -> None:
+    needed = overlap + 8
+    if needed <= 1:
+        return
+    fmt.setTopMargin(fmt.topMargin() + needed)
+    apply(fmt)
 
 
 def _is_diagram_image(name: str) -> bool:

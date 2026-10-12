@@ -134,6 +134,7 @@ class MainWindow(QMainWindow):
         self.toolbar = FormatToolbar(self.editor)
         self.toolbar.preview_toggled.connect(self.set_preview_visible)
         self.toolbar.edit_requested.connect(lambda: self.set_editing(True))
+        self.toolbar.close_edit_requested.connect(lambda: self.set_editing(False))
         self._editing = False
         rail = InsertRail(self.editor)
         self.rail = rail
@@ -224,6 +225,10 @@ class MainWindow(QMainWindow):
 
     def set_editing(self, editing: bool) -> None:
         """Leitura mostra só o texto renderizado. Editar divide editor e preview."""
+        if self._editing and not editing:
+            sizes = self.splitter.sizes()
+            if len(sizes) >= 2 and sizes[0] >= 80 and sizes[1] >= 80:
+                self._preview_sizes = sizes
         self._editing = editing
         self.toolbar.set_reading(not editing)
         self.rail.setVisible(editing)

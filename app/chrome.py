@@ -214,6 +214,7 @@ def _rail_button(text: str, tooltip: str) -> QToolButton:
 class FormatToolbar(QToolBar):
     preview_toggled = Signal(bool)
     edit_requested = Signal()
+    close_edit_requested = Signal()
 
     def __init__(self, editor: MarkdownEditor, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -277,6 +278,15 @@ class FormatToolbar(QToolBar):
         edit_btn.clicked.connect(self.edit_requested.emit)
         self._edit_action = self.addWidget(edit_btn)
         self._edit_btn = edit_btn
+
+        close_btn = QToolButton()
+        close_btn.setObjectName("closeEditorButton")
+        close_btn.setText("Fechar editor")
+        close_btn.setToolTip("Voltar para a renderização")
+        close_btn.setAutoRaise(False)
+        close_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        close_btn.clicked.connect(self.close_edit_requested.emit)
+        self._close_action = self.addWidget(close_btn)
         self.set_reading(True)
 
     def set_reading(self, reading: bool) -> None:
@@ -284,6 +294,7 @@ class FormatToolbar(QToolBar):
             action.setVisible(not reading)
         self._preview_action.setVisible(not reading)
         self._edit_action.setVisible(reading)
+        self._close_action.setVisible(not reading)
 
     def _on_preview_toggled(self, visible: bool) -> None:
         self._preview_btn.setToolTip(
