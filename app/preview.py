@@ -13,12 +13,14 @@ from pygments import highlight
 from pygments.formatters import HtmlFormatter
 from pygments.lexers import get_lexer_by_name, guess_lexer
 from pygments.util import ClassNotFound
-from PySide6.QtCore import QRectF, Qt, QTimer, QUrl, QUrlQuery, Signal
+from PySide6.QtCore import QMimeData, QRectF, Qt, QTimer, QUrl, QUrlQuery, Signal
 from PySide6.QtGui import (
     QBrush,
+    QClipboard,
     QColor,
     QDesktopServices,
     QFont,
+    QMouseEvent,
     QPainter,
     QPaintEvent,
     QPen,
@@ -41,6 +43,52 @@ _PRE_SPLIT_RE = re.compile(
 _HEADING_HTML_RE = re.compile(r"<h([1-6])>([\s\S]*?)</h\1>", re.IGNORECASE)
 _CODE_RE = re.compile(r"<code\b[^>]*>([\s\S]*?)</code>", re.IGNORECASE)
 _COPY_PAYLOADS: dict[str, str] = {}
+_COPY_LABELS = frozenset({"Copiar", "Copiado"})
+
+
+def _is_copy_href(href: str) -> bool:
+    return href.startswith("mdcopy:") or href.startswith("mdblock:")
+
+
+def _copy_identity(href: str) -> str:
+    if href.startswith("mdblock:"):
+        return "block:" + QUrlQuery(QUrl(href)).queryItemValue("id")
+    if href.startswith("mdcopy:"):
+        return href
+    return ""
+
+
+def _same_copy_href(left: str, right: str) -> bool:
+    if left == right:
+        return True
+    identity = _copy_identity(left)
+    return bool(identity) and identity == _copy_identity(right)
+
+
+def _text_for_copy_href(href: str) -> str:
+    if href.startswith("mdblock:"):
+        key = QUrlQuery(QUrl(href)).queryItemValue("id")
+        return _COPY_PAYLOADS.get(key, "")
+    marker = "t="
+    index = href.find(marker)
+    if index == -1:
+        return ""
+    return unquote(href[index + len(marker) :])
+
+
+def _put_clipboard(text: str) -> None:
+    if not text:
+        return
+    board = QApplication.clipboard()
+    copied = QMimeData()
+    copied.setText(text)
+    board.setMimeData(copied, QClipboard.Mode.Clipboard)
+    if board.supportsSelection():
+        selected = QMimeData()
+        selected.setText(text)
+        board.setMimeData(selected, QClipboard.Mode.Selection)
+
+
 _COPY_BTN_STYLE = (
     "color:#c5d0db;background-color:#10151b;text-decoration:none;"
     "padding:4px 10px;border:1px solid #6b7580;border-radius:4px;"
@@ -221,6 +269,12 @@ class CopyCodeBrowser(QTextBrowser):
         self._fit_timer.setSingleShot(True)
         self._fit_timer.setInterval(40)
         self._fit_timer.timeout.connect(self._refit_images)
+        self._press_href = ""
+        self._press_pos = None
+        self._copied_timer = QTimer(self)
+        self._copied_timer.setSingleShot(True)
+        self._copied_timer.setInterval(1400)
+        self._copied_timer.timeout.connect(self._restore_copy_labels)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
@@ -269,27 +323,111 @@ class CopyCodeBrowser(QTextBrowser):
             fmt.setForeground(QColor(0, 0, 0, 0))
             cursor.setCharFormat(fmt)
 
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        self._press_href = ""
+        self._press_pos = None
+        if event.button() == Qt.MouseButton.LeftButton:
+            pos = event.position().toPoint()
+            self._press_pos = pos
+            self._press_href = self.anchorAt(pos)
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        """Copia depois que o Qt solta o mouse.
+
+        Trocar o cursor dentro do clique deixa o botão preso: a primeira
+        cópia às vezes entra e as seguintes, em qualquer caixa, não disparam.
+        A seleção do clique também substitui o clipboard pelo texto "Copiar".
+        """
+        href = ""
+        if event.button() == Qt.MouseButton.LeftButton:
+            href = self._copy_href_at(event.position().toPoint())
+        super().mouseReleaseEvent(event)
+        if href:
+            self._commit_copy(href)
+        self._press_href = ""
+        self._press_pos = None
+
+    def _copy_href_at(self, pos) -> str:
+        href = self.anchorAt(pos)
+        if _is_copy_href(href):
+            return href
+        if not _is_copy_href(self._press_href) or self._press_pos is None:
+            return ""
+        if (pos - self._press_pos).manhattanLength() <= 8:
+            return self._press_href
+        return ""
+
     def _on_anchor(self, url: QUrl) -> None:
         if url.scheme() in {"mdcopy", "mdblock"}:
-            query = QUrlQuery(url)
-            key = query.queryItemValue("id")
-            text = _COPY_PAYLOADS.get(key) if key else unquote(query.queryItemValue("t"))
-            if text:
-                QApplication.clipboard().setText(text)
-                self.code_copied.emit(text)
-            self._clear_caret()
             return
         if url.scheme() in {"http", "https", "mailto"}:
             QDesktopServices.openUrl(url)
 
-    def _clear_caret(self) -> None:
-        bar = self.verticalScrollBar()
-        saved = bar.value()
+    def _commit_copy(self, href: str) -> None:
+        text = _text_for_copy_href(href)
+        if not text:
+            return
+        self._clear_selection()
+        self._restore_copy_labels()
+        self._set_copy_label(href, "Copiado")
+        _put_clipboard(text)
+        self.code_copied.emit(text)
+        self._copied_timer.start()
+
+    def _clear_selection(self) -> None:
+        vbar = self.verticalScrollBar()
+        hbar = self.horizontalScrollBar()
+        saved = (vbar.value(), hbar.value())
         cursor = self.textCursor()
-        cursor.clearSelection()
-        self.setTextCursor(cursor)
+        if cursor.hasSelection():
+            cursor.clearSelection()
+            self.setTextCursor(cursor)
         self.setExtraSelections([])
-        bar.setValue(saved)
+        vbar.setValue(min(saved[0], vbar.maximum()))
+        hbar.setValue(min(saved[1], hbar.maximum()))
+
+    def _restore_copy_labels(self) -> None:
+        board = QApplication.clipboard()
+        before = board.text(QClipboard.Mode.Clipboard)
+        self._set_copy_label(None, "Copiar")
+        after = board.text(QClipboard.Mode.Clipboard)
+        if after in _COPY_LABELS and before not in _COPY_LABELS:
+            _put_clipboard(before)
+
+    def _set_copy_label(self, href: str | None, label: str) -> None:
+        targets: list[tuple[int, int]] = []
+        formats = []
+        block = self.document().begin()
+        while block.isValid():
+            it = block.begin()
+            while not it.atEnd():
+                fragment = it.fragment()
+                fmt = fragment.charFormat()
+                doc_href = fmt.anchorHref()
+                current = fragment.text().strip()
+                if (
+                    _is_copy_href(doc_href)
+                    and current in _COPY_LABELS
+                    and current != label
+                    and (href is None or _same_copy_href(doc_href, href))
+                ):
+                    targets.append((fragment.position(), fragment.length()))
+                    formats.append(fmt)
+                it += 1
+            block = block.next()
+        if not targets:
+            return
+        vbar = self.verticalScrollBar()
+        hbar = self.horizontalScrollBar()
+        saved = (vbar.value(), hbar.value())
+        cursor = QTextCursor(self.document())
+        for (start, length), fmt in zip(reversed(targets), reversed(formats)):
+            cursor.setPosition(start)
+            cursor.setPosition(start + length, QTextCursor.MoveMode.KeepAnchor)
+            cursor.insertText(label, fmt)
+        vbar.setValue(min(saved[0], vbar.maximum()))
+        hbar.setValue(min(saved[1], hbar.maximum()))
 
     def paintEvent(self, event: QPaintEvent) -> None:
         super().paintEvent(event)
@@ -327,7 +465,8 @@ class CopyCodeBrowser(QTextBrowser):
         table = cursor.currentTable()
         if table is None or table.columns() < 2:
             return False
-        return table.cellAt(0, 1).firstCursorPosition().block().text().strip() == "Copiar"
+        label = table.cellAt(0, 1).firstCursorPosition().block().text().strip()
+        return label in _COPY_LABELS
 
     def _line_cursor_x(self, line, pos_in_block: int) -> float:
         value = line.cursorToX(pos_in_block)
@@ -705,7 +844,7 @@ def _fit_preview_tables(view: QTextBrowser) -> None:
                         copy = ""
                     else:
                         copy = child.cellAt(0, 1).firstCursorPosition().block().text().strip()
-                    if copy != "Copiar":
+                    if copy not in _COPY_LABELS:
                         fmt = child.format()
                         fmt.setWidth(QTextLength(QTextLength.Type.PercentageLength, 100))
                         cols = child.columns()
@@ -771,7 +910,7 @@ def _is_code_table(table: QTextTable) -> bool:
     if table.columns() < 2:
         return False
     label = table.cellAt(0, 1).firstCursorPosition().block().text().strip()
-    return label == "Copiar"
+    return label in _COPY_LABELS
 
 
 def _lift_text_below_code_tables(view: QTextBrowser) -> None:
